@@ -21,7 +21,7 @@ export default function ImagePicker({ image, onChange, label = "Choose screensho
   const stopWaiting = useRef<(() => void) | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  // An old browser could not make the picture smaller; the picture still goes, with a hint to update.
+  // old browser  not make  picture smaller
   const [outdated, setOutdated] = useState(false);
   const [failures, setFailures] = useState(0);
   const [filesFailed, setFilesFailed] = useState(false);
@@ -34,7 +34,6 @@ export default function ImagePicker({ image, onChange, label = "Choose screensho
     recordUploadProblem(reason);
   };
 
-  // Some browsers come back from the picker without giving the page a file, and without any error.
   const waitForFile = (fromFiles: boolean) => {
     stopWaiting.current?.();
     let timer: number | undefined;
@@ -69,11 +68,10 @@ export default function ImagePicker({ image, onChange, label = "Choose screensho
 
   const pickFile = async (input: HTMLInputElement, fromFiles: boolean) => {
     const file = input.files?.[0];
-    // Cleared so the same picture can be chosen again after removing it.
-    input.value = "";
     if (!file) return;
     stopWaiting.current?.();
     if (!isImageFile(file)) {
+      input.value = "";
       setError("Please choose an image file.");
       return;
     }
@@ -85,9 +83,13 @@ export default function ImagePicker({ image, onChange, label = "Choose screensho
       setFailures(0);
       onChange(prepared.image);
     } catch (problem) {
-      setError(problem instanceof Error ? problem.message : "This picture couldn't be opened. Please choose it again.");
-      countFailure(problem instanceof Error ? problem.message : "picture could not be opened", fromFiles);
+      const message = problem instanceof Error ? problem.message : "This picture couldn't be opened. Please choose it again.";
+      const name = problem instanceof Error ? problem.name : "Error";
+      setError(message);
+      countFailure(`${name}: ${message} (${file.type || "no type"}, ${file.size} bytes)`, fromFiles);
     }
+    // Cleared only now: some phones stop giving access to the picture once the input is emptied.
+    input.value = "";
     setLoading(false);
   };
 

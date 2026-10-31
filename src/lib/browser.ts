@@ -1,5 +1,7 @@
 // Only for browsers that cannot make the picture smaller: the original is sent, up to 2 MB.
 const MAX_ORIGINAL_BYTES = 2 * 1024 * 1024;
+const READ_ATTEMPTS = 3;
+const READ_RETRY_MS = 300;
 const SENDABLE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const TYPES_BY_EXTENSION: Record<string, string> = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", heic: "image/heic", heif: "image/heif" };
 
@@ -86,11 +88,29 @@ function readAsDataUrl(file: File) {
   });
 }
 
+// A picture from the phone can stop being readable soon after it is picked, so its bytes are copied straight away.
+async function copyIntoMemory(file: File) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return new File([await file.arrayBuffer()], file.name, { type: file.type });
+    } catch (problem) {
+      if (attempt === READ_ATTEMPTS) {
+        const unreadable = new Error("This picture couldn't be opened. Please choose it again.");
+        if (problem instanceof Error) unreadable.name = problem.name;
+        throw unreadable;
+      }
+      await new Promise((resolve) => setTimeout(resolve, READ_RETRY_MS));
+    }
+  }
+}
+
 // Makes a picked picture ready to upload. It is made smaller first; older browsers that cannot open
 // the picture send the original PNG or JPG instead (`original` is then true). Throws a message the
 // customer can act on.
-export async function prepareImageWithStatus(file: File, maxSize = 1000, quality = 0.72) {
-  if (file.size === 0) throw new Error("This picture is not on your phone yet. Open it in your gallery first, then choose it again.");
+export async function prepareImageWithStatus(picked: File, maxSize = 1000, quality = 0.72) {
+  if (picked.size === 0) throw new Error("This picture is not on your phone yet. Open it in your gallery first, then choose it again.");
+
+  const file = await copyIntoMemory(picked);
 
   try {
     return { image: await compressImage(file, maxSize, quality), original: false };
