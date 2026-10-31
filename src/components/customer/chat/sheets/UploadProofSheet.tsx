@@ -12,10 +12,11 @@ import Sheet from "./Sheet";
 
 type UploadProofSheetProps = {
   customerId: string;
+  pageReloaded: boolean;
   onClose: () => void;
 };
 
-export default function UploadProofSheet({ customerId, onClose }: UploadProofSheetProps) {
+export default function UploadProofSheet({ customerId, pageReloaded, onClose }: UploadProofSheetProps) {
   const state = useAppState();
   const now = useNow(1000);
   const [screenshot, setScreenshot] = useState<string | null>(null);
@@ -52,7 +53,7 @@ export default function UploadProofSheet({ customerId, onClose }: UploadProofShe
 
   return (
     <Sheet title="Upload payment proof" subtitle={`Order ${order.id} · Rs ${order.amount.toLocaleString()} · ${formatCountdown(order.expiresAt - now)} left`} onClose={onClose}>
-      <ImagePicker image={screenshot} onChange={setScreenshot} failedUploads={failedUploads} />
+      <ImagePicker image={screenshot} onChange={setScreenshot} failedUploads={failedUploads} customerId={customerId} pageReloaded={pageReloaded} />
 
       <label className="block mt-4">
         <span className="text-[13px] font-medium">Sender account name</span>

@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ImageIcon } from "lucide-react";
-import { galleryAccept, isImageFile, prepareImageWithStatus } from "@/lib/browser";
+import { chromeLink, galleryAccept, isAndroid, isImageFile, isInAppBrowser, prepareImageWithStatus } from "@/lib/browser";
+import { forgetPicking, rememberPicking } from "@/lib/pickingMemory";
 import { recordUploadProblem } from "@/lib/supabase/uploadProblems";
 
 const WAIT_FOR_FILE_MS = 1500;
@@ -13,18 +14,21 @@ type ImagePickerProps = {
   onChange: (image: string | null) => void;
   label?: string;
   failedUploads?: number;
+  customerId?: string;
+  pageReloaded?: boolean;
 };
 
-export default function ImagePicker({ image, onChange, label = "Choose screenshot", failedUploads = 0 }: ImagePickerProps) {
+export default function ImagePicker({ image, onChange, label = "Choose screenshot", failedUploads = 0, customerId, pageReloaded = false }: ImagePickerProps) {
   const galleryInput = useRef<HTMLInputElement>(null);
   const filesInput = useRef<HTMLInputElement>(null);
   const stopWaiting = useRef<(() => void) | null>(null);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(pageReloaded ? "The page reloaded while your picture was opening. Please choose it again." : "");
   const [loading, setLoading] = useState(false);
   // old browser  not make  picture smaller
   const [outdated, setOutdated] = useState(false);
-  const [failures, setFailures] = useState(0);
+  const [failures, setFailures] = useState(pageReloaded ? 1 : 0);
   const [filesFailed, setFilesFailed] = useState(false);
+  const [inAppBrowser] = useState(isInAppBrowser);
 
   useEffect(() => () => stopWaiting.current?.(), []);
 
@@ -54,7 +58,9 @@ export default function ImagePicker({ image, onChange, label = "Choose screensho
       window.removeEventListener("focus", onReturn);
       window.clearTimeout(timer);
       stopWaiting.current = null;
+      forgetPicking();
     };
+    if (customerId) rememberPicking(customerId);
   };
 
   const openPicker = (fromFiles: boolean) => {
@@ -98,6 +104,16 @@ export default function ImagePicker({ image, onChange, label = "Choose screensho
 
   return (
     <div>
+      {inAppBrowser && !image && (
+        <div className="mb-3 rounded-xl bg-amber-50 text-amber-900 px-3 py-2.5 text-[12.5px]">
+          <p>Pictures may not work in this app&apos;s browser. Please open this page in {isAndroid() ? "Chrome" : "Safari"} and sign in there.</p>
+          {isAndroid() && (
+            <a href={chromeLink()} className="mt-1 inline-block font-semibold underline">
+              Open in Chrome
+            </a>
+          )}
+        </div>
+      )}
       <input ref={galleryInput} type="file" accept="image/*" hidden onChange={(event) => pickFile(event.target, false)} />
       <input ref={filesInput} type="file" hidden onChange={(event) => pickFile(event.target, true)} />
       <button

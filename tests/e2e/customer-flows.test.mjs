@@ -18,11 +18,12 @@ after(async () => {
   await browser?.close();
 });
 
-async function newCustomer() {
-  const page = await (await browser.newContext({ viewport: { width: 420, height: 860 } })).newPage();
+async function newCustomer(options = {}) {
+  const page = await (await browser.newContext({ viewport: { width: 420, height: 860 }, ...options })).newPage();
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto(BASE_URL, { timeout: 60000 });
+  await page.evaluate(() => [1, 2, 3, 4, 5].forEach(() => window.history.pushState(null, "")));
   await page.waitForSelector("text=Continue", { timeout: 60000 });
   await page.fill('input[placeholder="you@example.com"]', `test.e2e${Date.now() % 1000000}@gmail.com`);
   await page.click("form button:not([type=button])");
@@ -123,6 +124,82 @@ test("after a payment proof both menu buttons are closed until the admin decides
   assert.ok(await page.isVisible("text=Payment being verified"), "support is closed too");
   assert.equal(await page.locator("text=How can we help?").count(), 0, "support did not open");
   assert.ok(!(await page.isVisible("textarea")), "no message box");
+  assert.deepEqual(errors, []);
+});
+
+test("a browser inside another app is told to open Chrome", async (t) => {
+  const userAgent = "Mozilla/5.0 (Linux; Android 13; SM-A135F; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/120.0 Mobile Safari/537.36 FB_IAB/FB4A";
+  const { page, errors } = await newCustomer({ userAgent });
+  if (!(await createOrder(page))) return t.skip("the store is not taking orders right now");
+  await click(page, "Upload payment proof");
+  const link = page.locator("a:has-text('Open in Chrome')");
+  assert.equal(await link.count(), 1);
+  assert.match(await link.getAttribute("href"), /^intent:\/\/.*package=com\.android\.chrome/);
+  assert.deepEqual(errors, []);
+});
+
+test("the proof sheet comes back when the page reloads while the picker is open", async (t) => {
+  const { page, errors } = await newCustomer();
+  if (!(await createOrder(page))) return t.skip("the store is not taking orders right now");
+  await click(page, "Upload payment proof");
+  const chooser = page.waitForEvent("filechooser");
+  await page.click("button:has-text('Choose screenshot')");
+  await chooser;
+  await page.reload();
+  await page.waitForSelector("text=The page reloaded while your picture was opening", { timeout: 30000 });
+  assert.ok(await page.isVisible("text=Upload payment proof"), "the sheet is open again");
+  assert.deepEqual(errors, []);
+});
+
+test("a browser without file.arrayBuffer can still add a picture", async (t) => {
+  const { page, errors } = await newCustomer();
+  if (!(await createOrder(page))) return t.skip("the store is not taking orders right now");
+  await page.evaluate(() => {
+    delete Blob.prototype.arrayBuffer;
+  });
+  await click(page, "Upload payment proof");
+  await (await page.$("input[type=file]")).setInputFiles({ name: "receipt.png", mimeType: "image/png", buffer: tinyPng });
+  await page.waitForSelector("img[alt='Selected screenshot']", { timeout: 15000 });
+  assert.equal(await page.locator("text=This picture couldn't be opened").count(), 0);
+  assert.deepEqual(errors, []);
+});
+
+test("a very large picture is refused before it is read", async (t) => {
+  const { page, errors } = await newCustomer();
+  if (!(await createOrder(page))) return t.skip("the store is not taking orders right now");
+  await click(page, "Upload payment proof");
+  await (await page.$("input[type=file]")).setInputFiles({ name: "photo.png", mimeType: "image/png", buffer: Buffer.alloc(21 * 1024 * 1024) });
+  await page.waitForSelector("text=This picture is too large", { timeout: 15000 });
+  assert.deepEqual(errors, []);
+});
+
+test("a failed upload is tried again without the customer noticing", async (t) => {
+  const { page, errors } = await newCustomer();
+  if (!(await createOrder(page))) return t.skip("the store is not taking orders right now");
+  let failures = 0;
+  await page.route("**/storage/v1/object/**", (route) => (route.request().method() === "POST" && failures++ < 2 ? route.abort() : route.continue()));
+  await click(page, "Upload payment proof");
+  await (await page.$("input[type=file]")).setInputFiles({ name: "receipt.png", mimeType: "image/png", buffer: tinyPng });
+  await page.fill("input[placeholder*='Name on the account']", "Ali Raza");
+  await click(page, "Submit for verification");
+  await page.waitForSelector("text=Payment proof submitted", { timeout: 15000 });
+  assert.equal(failures >= 2, true);
+  assert.equal(await page.locator("text=Could not upload").count(), 0);
+  assert.deepEqual(errors, []);
+});
+
+test("a proof the server refuses stays in the sheet with a clear reason", async (t) => {
+  const { page, errors } = await newCustomer();
+  if (!(await createOrder(page))) return t.skip("the store is not taking orders right now");
+  await page.route("**/rest/v1/orders**", (route) =>
+    route.request().method() === "PATCH" ? route.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ code: "P0001", message: "This order has expired" }) }) : route.continue()
+  );
+  await click(page, "Upload payment proof");
+  await (await page.$("input[type=file]")).setInputFiles({ name: "receipt.png", mimeType: "image/png", buffer: tinyPng });
+  await page.fill("input[placeholder*='Name on the account']", "Ali Raza");
+  await click(page, "Submit for verification");
+  await page.waitForSelector("text=Your payment time ended", { timeout: 15000 });
+  assert.equal(await page.locator("text=Payment proof submitted").count(), 0, "the chat does not claim it was sent");
   assert.deepEqual(errors, []);
 });
 
@@ -241,6 +318,7 @@ test("after several cancelled orders, other issues wait for the timer but common
     await click(page, "Cancel");
     await wait(1500);
   }
+  if (await page.isVisible("text=Your access has been restricted")) return t.skip("these settings block the account after two cancels");
   if (!(await page.isVisible("text=New orders are paused"))) return t.skip("orders are not paused after two cancels with these settings");
 
   await click(page, "Customer Support");
@@ -250,4 +328,32 @@ test("after several cancelled orders, other issues wait for the timer but common
   assert.ok(await page.isVisible("text=Requests paused"), "other issues explain the pause");
   assert.ok(!(await page.isVisible("textarea")), "no request form");
   assert.deepEqual(errors, []);
+});
+
+async function openWithChrome(version) {
+  const userAgent = `Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${version}.0.0.0 Mobile Safari/537.36`;
+  const page = await (await browser.newContext({ userAgent, viewport: { width: 420, height: 860 } })).newPage();
+  await page.goto(BASE_URL, { timeout: 60000 });
+  return page;
+}
+
+test("a current Chrome sees no update notice", async () => {
+  const page = await openWithChrome(120);
+  assert.equal(await page.isVisible("#old-browser-notice"), false);
+});
+
+test("an old Chrome is told to update and can close the notice", async () => {
+  const page = await openWithChrome(101);
+  assert.equal(await page.isVisible("#old-browser-notice"), true);
+  assert.match(await page.getAttribute("#old-browser-link", "href"), /play\.google\.com/);
+  await page.click("#old-browser-close");
+  assert.equal(await page.isVisible("#old-browser-notice"), false);
+});
+
+test("a very old Chrome gets the update screen with no way to close it", async () => {
+  const page = await openWithChrome(70);
+  assert.equal(await page.isVisible("#old-browser-notice"), true);
+  assert.equal(await page.isVisible("#old-browser-close"), false);
+  const box = await page.locator("#old-browser-notice").boundingBox();
+  assert.equal(box.height, 860);
 });

@@ -1,5 +1,6 @@
 // Only for browsers that cannot make the picture smaller: the original is sent, up to 2 MB.
 const MAX_ORIGINAL_BYTES = 2 * 1024 * 1024;
+const MAX_PICKED_BYTES = 20 * 1024 * 1024;
 const READ_ATTEMPTS = 3;
 const READ_RETRY_MS = 300;
 const SENDABLE_TYPES = ["image/jpeg", "image/png", "image/webp"];
@@ -19,7 +20,20 @@ export function isImageFile(file: File) {
 // Android Chrome opens the system Photo Picker when only images are accepted, and that picker can
 // return without giving the page the file. One non-image type makes Chrome use its normal chooser.
 export function galleryAccept() {
-  return /android/i.test(navigator.userAgent) ? "image/*,application/x-premium-store" : "image/*";
+  return isAndroid() ? "image/*,application/x-premium-store" : "image/*";
+}
+
+export function isInAppBrowser() {
+  return /; wv\)|FBAN|FBAV|FB_IAB|Instagram|WhatsApp|Snapchat|TikTok|musical_ly/i.test(navigator.userAgent);
+}
+
+export function isAndroid() {
+  return /android/i.test(navigator.userAgent);
+}
+
+export function chromeLink() {
+  const { host, pathname, search } = window.location;
+  return `intent://${host}${pathname}${search}#Intent;scheme=https;package=com.android.chrome;end`;
 }
 
 async function compressImage(file: File, maxSize: number, quality: number) {
@@ -88,11 +102,21 @@ function readAsDataUrl(file: File) {
   });
 }
 
+function readBytes(file: File) {
+  if (file.arrayBuffer) return file.arrayBuffer();
+  return new Promise<ArrayBuffer>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as ArrayBuffer);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsArrayBuffer(file);
+  });
+}
+
 // A picture from the phone can stop being readable soon after it is picked, so its bytes are copied straight away.
 async function copyIntoMemory(file: File) {
   for (let attempt = 1; ; attempt++) {
     try {
-      return new File([await file.arrayBuffer()], file.name, { type: file.type });
+      return new File([await readBytes(file)], file.name, { type: file.type });
     } catch (problem) {
       if (attempt === READ_ATTEMPTS) {
         const unreadable = new Error("This picture couldn't be opened. Please choose it again.");
@@ -103,12 +127,9 @@ async function copyIntoMemory(file: File) {
     }
   }
 }
-
-// Makes a picked picture ready to upload. It is made smaller first; older browsers that cannot open
-// the picture send the original PNG or JPG instead (`original` is then true). Throws a message the
-// customer can act on.
 export async function prepareImageWithStatus(picked: File, maxSize = 1000, quality = 0.72) {
   if (picked.size === 0) throw new Error("This picture is not on your phone yet. Open it in your gallery first, then choose it again.");
+  if (picked.size > MAX_PICKED_BYTES) throw new Error("This picture is too large. Please choose a screenshot, not a camera photo.");
 
   const file = await copyIntoMemory(picked);
 

@@ -3,6 +3,8 @@ import { formatDuration, getEffectiveStatus } from "../availability";
 import { serverNow } from "../clock";
 import { getSupabase } from "../supabase/client";
 import { uploadScreenshot } from "../supabase/screenshots";
+import { saveProofNow } from "../supabase/sync";
+import { recordUploadProblem } from "../supabase/uploadProblems";
 import type { AppState, Customer, Stage, TicketKind } from "../types";
 import { validateName } from "../validation";
 import { hasWaitingReplies } from "./connection";
@@ -413,10 +415,19 @@ export function cancelOrder(customerId: string) {
   });
 }
 
+const ORDER_TIME_ENDED = "Your payment time ended, so this order was closed. Please create a new order.";
+const PROOF_REFUSALS: Record<string, string> = {
+  "This order has expired": ORDER_TIME_ENDED,
+  "This order can no longer be changed": "This order is already closed, so your proof was not saved. Please check the chat.",
+};
+
 export async function submitPaymentProof(customerId: string, screenshot: string, senderName: string): Promise<string | null> {
   const order = getActiveOrder(getState(), customerId);
   if (!order) return "No open order found.";
-  if (!canStillPay(order)) return "This order has expired. Please create a new one.";
+  if (!canStillPay(order)) {
+    recordUploadProblem(`Order ${order.id} time ended before submit`);
+    return ORDER_TIME_ENDED;
+  }
 
   const name = senderName.trim();
   const nameProblem = validateName(name, "Sender account name");
@@ -425,11 +436,18 @@ export async function submitPaymentProof(customerId: string, screenshot: string,
   let screenshotPath: string;
   try {
     screenshotPath = await uploadScreenshot(customerId, screenshot);
-  } catch {
+  } catch (problem) {
+    recordUploadProblem(`Upload failed: ${problem instanceof Error ? problem.message : problem} (${Math.round(screenshot.length / 1024)} KB)`);
     return "Could not upload the screenshot. Please check your internet and try again.";
   }
 
-  updateState((state) => {
+  const refusal = await saveProofNow(order.id, screenshotPath, name);
+  if (refusal) {
+    recordUploadProblem(`Order ${order.id} not saved: ${refusal}`);
+    return PROOF_REFUSALS[refusal] ?? "Your proof could not be saved. Please check your internet and try again.";
+  }
+
+  applyRemoteChange((state) => {
     const current = state.orders.find((item) => item.id === order.id);
     if (!current) return;
 
@@ -438,7 +456,9 @@ export async function submitPaymentProof(customerId: string, screenshot: string,
     current.senderName = name;
     current.submittedAt = serverNow();
     current.rejectReason = undefined;
+  });
 
+  updateState((state) => {
     const customer = state.customers.find((item) => item.id === customerId);
     if (customer) customer.cancelCount = 0;
 
@@ -447,7 +467,7 @@ export async function submitPaymentProof(customerId: string, screenshot: string,
     notifyAdmin(state, {
       kind: "payment",
       title: "Payment submitted",
-      body: `${findCustomerTitle(state, customerId)} · ${current.planName} · Rs ${current.amount.toLocaleString()}`,
+      body: `${findCustomerTitle(state, customerId)} · ${order.planName} · Rs ${order.amount.toLocaleString()}`,
       customerId,
     });
   });

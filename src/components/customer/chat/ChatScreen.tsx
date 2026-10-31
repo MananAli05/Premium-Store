@@ -3,9 +3,11 @@
 import { useEffect, useState } from "react";
 import { WifiOff } from "lucide-react";
 import { useConnection } from "@/hooks/useConnection";
+import { forgetPicking, pickingWasInterrupted } from "@/lib/pickingMemory";
 import { markMessagesSeen, openChat } from "@/lib/store/customer";
 import { findOrderMethod, keepsChat } from "@/lib/store/helpers";
 import { useAppState } from "@/lib/store/state";
+import { recordUploadProblem } from "@/lib/supabase/uploadProblems";
 import type { Customer } from "@/lib/types";
 import ActionPanel from "./ActionPanel";
 import { CHAT_ROOT_ID } from "./chatRoot";
@@ -25,7 +27,8 @@ type ChatScreenProps = {
 
 export default function ChatScreen({ customer, onSignOut }: ChatScreenProps) {
   const state = useAppState();
-  const [sheet, setSheet] = useState<OpenSheet>(null);
+  const [pageReloaded] = useState(() => pickingWasInterrupted(customer.id));
+  const [sheet, setSheet] = useState<OpenSheet>(pageReloaded ? "proof" : null);
   const conversation = state.conversations[customer.id];
   const messages = state.messages.filter((message) => message.customerId === customer.id);
   const orderMethod = findOrderMethod(state, customer.id);
@@ -34,6 +37,12 @@ export default function ChatScreen({ customer, onSignOut }: ChatScreenProps) {
   useEffect(() => {
     openChat(customer.id);
   }, [customer.id]);
+
+  useEffect(() => {
+    if (!pageReloaded) return;
+    forgetPicking();
+    recordUploadProblem("page reloaded while the picker was open");
+  }, [pageReloaded]);
 
   useEffect(() => {
     if (document.visibilityState === "visible") markMessagesSeen(customer.id);
@@ -73,7 +82,7 @@ export default function ChatScreen({ customer, onSignOut }: ChatScreenProps) {
         !conversation.typing && <ActionPanel customerId={customer.id} conversation={conversation} onOpenSheet={setSheet} />
       )}
 
-      {sheet === "proof" && <UploadProofSheet customerId={customer.id} onClose={() => setSheet(null)} />}
+      {sheet === "proof" && <UploadProofSheet customerId={customer.id} pageReloaded={pageReloaded} onClose={() => setSheet(null)} />}
       {sheet === "issue" && <PaymentProblemSheet onClose={() => setSheet(null)} />}
       {sheet === "steps" && orderMethod && <PaymentStepsSheet customerId={customer.id} method={orderMethod} onClose={() => setSheet(null)} />}
     </section>

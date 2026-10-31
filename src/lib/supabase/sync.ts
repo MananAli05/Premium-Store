@@ -109,6 +109,8 @@ type Op =
   | { kind: "delete"; table: string; key: string; ids: string[]; tries: number }
   | { kind: "config"; row: Row; tries: number };
 
+const PROOF_SAVE_ATTEMPTS = 3;
+
 let outbox: Op[] = [];
 let outboxKey = "";
 let flushing: Promise<void> | null = null;
@@ -243,6 +245,21 @@ async function sendOutbox() {
   if (activeRole && (refused || refreshWanted)) {
     refreshWanted = false;
     void catchUp(false, refused);
+  }
+}
+
+export async function saveProofNow(orderId: string, screenshot: string, senderName: string) {
+  const client = getActiveClient();
+  for (let attempt = 1; ; attempt++) {
+    await flushOutbox();
+    const result = await client.from("orders").update({ status: "pending_review", screenshot, sender_name: senderName }).eq("id", orderId).select("id");
+    if (!result.error && result.data?.length) return null;
+
+    const { data } = await client.from("orders").select("screenshot").eq("id", orderId).maybeSingle();
+    if (data?.screenshot === screenshot) return null;
+
+    if (attempt === PROOF_SAVE_ATTEMPTS || (result.error && !canRetry(result))) return result.error?.message ?? "The order is not on the server yet";
+    await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
   }
 }
 
