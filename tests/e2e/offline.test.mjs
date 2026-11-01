@@ -51,7 +51,7 @@ async function customerWithOrder(context, email) {
   await click(page, "1 Month");
   await click(page, "JazzCash");
   await page.click("button:has-text('I agree, create order')");
-  await page.waitForSelector("button:has-text('Upload payment proof')", { timeout: 15000 });
+  await page.waitForSelector("button:has-text('Upload payment screenshot')", { timeout: 15000 });
   await wait(2500);
   return { page, ok: true };
 }

@@ -55,7 +55,7 @@ async function createOrder(page) {
   await click(page, "1 Month");
   await click(page, "JazzCash");
   await page.click("button:has-text('I agree, create order'), button:has-text('Create order')");
-  await page.waitForSelector("button:has-text('Upload payment proof')", { timeout: 15000 });
+  await page.waitForSelector("button:has-text('Upload payment screenshot')", { timeout: 15000 });
   return true;
 }
 
@@ -110,9 +110,9 @@ test("while an app issue is open both menu buttons are closed and explain why", 
 test("after a payment proof both menu buttons are closed until the admin decides", async (t) => {
   const { page, errors } = await newCustomer();
   if (!(await createOrder(page))) return t.skip("the store is not taking orders right now");
-  await click(page, "Upload payment proof");
+  await click(page, "Upload payment screenshot");
   await (await page.$("input[type=file]")).setInputFiles({ name: "receipt.png", mimeType: "image/png", buffer: tinyPng });
-  await page.fill("input[placeholder*='Name on the account']", "Ali Raza");
+  await page.fill("input[placeholder='e.g. Usman']", "Ali Raza");
   await click(page, "Submit for verification");
   await wait(3000);
 
@@ -131,7 +131,7 @@ test("a browser inside another app is told to open Chrome", async (t) => {
   const userAgent = "Mozilla/5.0 (Linux; Android 13; SM-A135F; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/120.0 Mobile Safari/537.36 FB_IAB/FB4A";
   const { page, errors } = await newCustomer({ userAgent });
   if (!(await createOrder(page))) return t.skip("the store is not taking orders right now");
-  await click(page, "Upload payment proof");
+  await click(page, "Upload payment screenshot");
   const link = page.locator("a:has-text('Open in Chrome')");
   assert.equal(await link.count(), 1);
   assert.match(await link.getAttribute("href"), /^intent:\/\/.*package=com\.android\.chrome/);
@@ -141,13 +141,13 @@ test("a browser inside another app is told to open Chrome", async (t) => {
 test("the proof sheet comes back when the page reloads while the picker is open", async (t) => {
   const { page, errors } = await newCustomer();
   if (!(await createOrder(page))) return t.skip("the store is not taking orders right now");
-  await click(page, "Upload payment proof");
+  await click(page, "Upload payment screenshot");
   const chooser = page.waitForEvent("filechooser");
   await page.click("button:has-text('Choose screenshot')");
   await chooser;
   await page.reload();
   await page.waitForSelector("text=The page reloaded while your picture was opening", { timeout: 30000 });
-  assert.ok(await page.isVisible("text=Upload payment proof"), "the sheet is open again");
+  assert.ok(await page.isVisible("text=Upload payment screenshot"), "the sheet is open again");
   assert.deepEqual(errors, []);
 });
 
@@ -157,7 +157,7 @@ test("a browser without file.arrayBuffer can still add a picture", async (t) => 
   await page.evaluate(() => {
     delete Blob.prototype.arrayBuffer;
   });
-  await click(page, "Upload payment proof");
+  await click(page, "Upload payment screenshot");
   await (await page.$("input[type=file]")).setInputFiles({ name: "receipt.png", mimeType: "image/png", buffer: tinyPng });
   await page.waitForSelector("img[alt='Selected screenshot']", { timeout: 15000 });
   assert.equal(await page.locator("text=This picture couldn't be opened").count(), 0);
@@ -167,7 +167,7 @@ test("a browser without file.arrayBuffer can still add a picture", async (t) => 
 test("a very large picture is refused before it is read", async (t) => {
   const { page, errors } = await newCustomer();
   if (!(await createOrder(page))) return t.skip("the store is not taking orders right now");
-  await click(page, "Upload payment proof");
+  await click(page, "Upload payment screenshot");
   await (await page.$("input[type=file]")).setInputFiles({ name: "photo.png", mimeType: "image/png", buffer: Buffer.alloc(21 * 1024 * 1024) });
   await page.waitForSelector("text=This picture is too large", { timeout: 15000 });
   assert.deepEqual(errors, []);
@@ -178,9 +178,9 @@ test("a failed upload is tried again without the customer noticing", async (t) =
   if (!(await createOrder(page))) return t.skip("the store is not taking orders right now");
   let failures = 0;
   await page.route("**/storage/v1/object/**", (route) => (route.request().method() === "POST" && failures++ < 2 ? route.abort() : route.continue()));
-  await click(page, "Upload payment proof");
+  await click(page, "Upload payment screenshot");
   await (await page.$("input[type=file]")).setInputFiles({ name: "receipt.png", mimeType: "image/png", buffer: tinyPng });
-  await page.fill("input[placeholder*='Name on the account']", "Ali Raza");
+  await page.fill("input[placeholder='e.g. Usman']", "Ali Raza");
   await click(page, "Submit for verification");
   await page.waitForSelector("text=Payment proof submitted", { timeout: 15000 });
   assert.equal(failures >= 2, true);
@@ -194,9 +194,9 @@ test("a proof the server refuses stays in the sheet with a clear reason", async 
   await page.route("**/rest/v1/orders**", (route) =>
     route.request().method() === "PATCH" ? route.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ code: "P0001", message: "This order has expired" }) }) : route.continue()
   );
-  await click(page, "Upload payment proof");
+  await click(page, "Upload payment screenshot");
   await (await page.$("input[type=file]")).setInputFiles({ name: "receipt.png", mimeType: "image/png", buffer: tinyPng });
-  await page.fill("input[placeholder*='Name on the account']", "Ali Raza");
+  await page.fill("input[placeholder='e.g. Usman']", "Ali Raza");
   await click(page, "Submit for verification");
   await page.waitForSelector("text=Your payment time ended", { timeout: 15000 });
   assert.equal(await page.locator("text=Payment proof submitted").count(), 0, "the chat does not claim it was sent");

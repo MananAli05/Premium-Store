@@ -52,18 +52,17 @@ export default function UploadProofSheet({ customerId, pageReloaded, onClose }: 
   };
 
   return (
-    <Sheet title="Upload payment proof" subtitle={`Order ${order.id} · Rs ${order.amount.toLocaleString()} · ${formatCountdown(order.expiresAt - now)} left`} onClose={onClose}>
+    <Sheet title="Upload payment screenshot" subtitle={`Order ${order.id} · Rs ${order.amount.toLocaleString()} · ${formatCountdown(order.expiresAt - now)} left`} onClose={onClose}>
       <ImagePicker image={screenshot} onChange={setScreenshot} failedUploads={failedUploads} customerId={customerId} pageReloaded={pageReloaded} />
 
       <label className="block mt-4">
-        <span className="text-[13px] font-medium">Sender account name</span>
+        <span className="text-[13px] font-medium">Please enter your sender name, not a bank name</span>
         <input
           value={senderName}
           onChange={(event) => updateSenderName(event.target.value)}
-          placeholder="Name on the account you paid from"
+          placeholder="e.g. Usman"
           className="mt-1.5 w-full h-12 rounded-xl bg-[var(--bg)] border border-[var(--line)] px-4 text-[15px] outline-none focus:border-[color-mix(in_srgb,var(--accent)_55%,transparent)] placeholder:text-[#9aa1ab]"
         />
-        <span className="text-[11.5px] text-[var(--muted)] mt-1 block">Letters and spaces only, exactly as shown on your receipt. Not the account number.</span>
       </label>
 
       {error && <div className="mt-3 text-[13px] text-red-700 bg-red-500/10 rounded-lg px-3 py-2">{error}</div>}

@@ -19,7 +19,7 @@ export default function PaymentActions({ customerId, method, onOpenSheet }: Paym
   return (
     <div className="max-w-[560px] mx-auto space-y-2">
       <button onClick={() => onOpenSheet("proof")} className={primaryButtonClass}>
-        Upload payment proof
+        Upload payment screenshot
       </button>
       <div className={classNames("grid gap-2", hasSteps ? "grid-cols-3" : "grid-cols-2")}>
         {hasSteps && (
