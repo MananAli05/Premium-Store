@@ -318,7 +318,7 @@ test("after several cancelled orders, other issues wait for the timer but common
     await click(page, "Cancel");
     await wait(1500);
   }
-  if (await page.isVisible("text=Your access has been restricted")) return t.skip("these settings block the account after two cancels");
+  if (await page.isVisible("text=Continue")) return t.skip("these settings block the account after two cancels");
   if (!(await page.isVisible("text=New orders are paused"))) return t.skip("orders are not paused after two cancels with these settings");
 
   await click(page, "Customer Support");
@@ -328,6 +328,32 @@ test("after several cancelled orders, other issues wait for the timer but common
   assert.ok(await page.isVisible("text=Requests paused"), "other issues explain the pause");
   assert.ok(!(await page.isVisible("textarea")), "no request form");
   assert.deepEqual(errors, []);
+});
+
+test("a blocked customer is signed out and sees the reason at the email step", async (t) => {
+  const { page } = await newCustomer();
+  for (let round = 0; round < 2; round++) {
+    if (!(await createOrder(page))) return t.skip("the store is not taking orders right now");
+    await click(page, "Cancel");
+    await wait(1500);
+  }
+  if (!(await page.isVisible("text=Continue"))) return t.skip("these settings do not block after two cancels");
+
+  await page.route("**/rest/v1/rpc/blocked_email_reason", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify("Too many cancelled orders") }));
+  await page.fill('input[placeholder="you@example.com"]', "blocked.customer@gmail.com");
+  await page.click("form button:not([type=button])");
+  await page.waitForSelector("text=This email is blocked. Reason: Too many cancelled orders", { timeout: 15000 });
+  assert.equal(await page.locator("text=Welcome back").count(), 0, "the PIN step does not open");
+});
+
+test("an email that is not blocked goes on as usual", async () => {
+  const page = await (await browser.newContext({ viewport: { width: 420, height: 860 } })).newPage();
+  await page.route("**/rest/v1/rpc/blocked_email_reason", (route) => route.fulfill({ status: 200, contentType: "application/json", body: "null" }));
+  await page.goto(BASE_URL, { timeout: 60000 });
+  await page.waitForSelector("text=Continue", { timeout: 60000 });
+  await page.fill('input[placeholder="you@example.com"]', `test.e2e${Date.now() % 1000000}@gmail.com`);
+  await page.click("form button:not([type=button])");
+  await page.waitForSelector("text=Create your PIN", { timeout: 15000 });
 });
 
 async function openWithChrome(version) {

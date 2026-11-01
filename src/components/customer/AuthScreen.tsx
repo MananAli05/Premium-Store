@@ -5,7 +5,7 @@ import { Lock, ShieldCheck, Timer, Zap } from "lucide-react";
 import { classNames } from "@/lib/format";
 import SecretInput from "@/components/SecretInput";
 import { NO_INTERNET_MESSAGE, isOnline } from "@/lib/store/connection";
-import { checkEmailStatus, requestPinReset, signIn, signUp } from "@/lib/store/customer";
+import { checkEmailStatus, findBlockReason, requestPinReset, signIn, signUp } from "@/lib/store/customer";
 import { cleanDigits, cleanEmail, limits, validateEmail, validatePin, validateWhatsApp } from "@/lib/validation";
 
 type Step = "email" | "login" | "create" | "forgot";
@@ -27,6 +27,10 @@ const inputClass =
   "mt-1.5 w-full h-12 rounded-xl bg-[var(--bg)] border border-[var(--line)] px-4 text-[15.5px] outline-none placeholder:text-[#9aa1ab] focus:bg-[var(--surface)] focus:border-[var(--accent)] focus:ring-4 focus:ring-[color-mix(in_srgb,var(--accent)_12%,transparent)] transition";
 
 const pinClass = classNames(inputClass, "tracking-[0.3em]");
+
+function blockedMessage(reason: string) {
+  return reason ? `This email is blocked. Reason: ${reason}` : "This email is blocked.";
+}
 
 export default function AuthScreen() {
   const [step, setStep] = useState<Step>("email");
@@ -73,6 +77,13 @@ export default function AuthScreen() {
     setBusy(true);
 
     if (step === "email") {
+      const blockReason = await findBlockReason(email);
+      if (blockReason !== null) {
+        setBusy(false);
+        setError(blockedMessage(blockReason));
+        return;
+      }
+
       const status = await checkEmailStatus(email);
       setBusy(false);
       if (status === null) setError("We couldn't check this email right now. Please try again.");

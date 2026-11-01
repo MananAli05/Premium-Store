@@ -11,7 +11,6 @@ import { recordUploadProblem } from "@/lib/supabase/uploadProblems";
 import type { Customer } from "@/lib/types";
 import ActionPanel from "./ActionPanel";
 import { CHAT_ROOT_ID } from "./chatRoot";
-import BlockedNotice from "./BlockedNotice";
 import ChatHeader from "./ChatHeader";
 import MessageList from "./MessageList";
 import PaymentStepsSheet from "./sheets/PaymentStepsSheet";
@@ -74,9 +73,7 @@ export default function ChatScreen({ customer, onSignOut }: ChatScreenProps) {
       )}
       <MessageList messages={messages} typing={conversation.typing} stage={conversation.stage} keepsChat={keepsChat(state, customer.id)} />
 
-      {customer.blocked ? (
-        <BlockedNotice customer={customer} />
-      ) : waiting ? (
+      {waiting ? (
         <div className="shrink-0 px-4 py-4 text-center text-[13.5px] text-[var(--muted)] border-t border-[var(--line)]">Waiting for the internet to continue…</div>
       ) : (
         !conversation.typing && <ActionPanel customerId={customer.id} conversation={conversation} onOpenSheet={setSheet} />

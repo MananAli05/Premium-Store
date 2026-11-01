@@ -27,6 +27,11 @@ export async function checkEmailStatus(email: string): Promise<EmailStatus | nul
   return data as EmailStatus;
 }
 
+export async function findBlockReason(email: string) {
+  const { data, error } = await getSupabase("customer").rpc("blocked_email_reason", { check_email: normalizeEmail(email) });
+  return error ? null : (data as string | null);
+}
+
 export async function signIn(email: string, pin: string): Promise<AuthResult> {
   const { error } = await getSupabase("customer").auth.signInWithPassword({ email: normalizeEmail(email), password: pin });
   if (error) return { error: "Wrong PIN. Try again or use Forgot PIN." };

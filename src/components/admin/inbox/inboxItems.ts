@@ -47,6 +47,7 @@ export function lastActivityAt(state: AppState, customerId: string) {
 }
 
 export function isCustomerActive(state: AppState, customerId: string, now: number) {
+  if (state.customers.find((customer) => customer.id === customerId)?.blocked) return false;
   return now - lastActivityAt(state, customerId) < state.settings.timers.inactiveMinutes * 60_000;
 }
 

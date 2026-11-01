@@ -30,7 +30,7 @@ export default function AppCustomers({ onNavigate }: { onNavigate: Navigate }) {
   const activity = new Map(state.customers.map((customer) => [customer.id, lastActivityAt(state, customer.id)]));
   const lastActive = (id: string) => activity.get(id) ?? 0;
   const customers = [...state.customers].sort((a, b) => lastActive(b.id) - lastActive(a.id));
-  const active = customers.filter((customer) => !customer.blocked && isCustomerActive(state, customer.id, now));
+  const active = customers.filter((customer) => isCustomerActive(state, customer.id, now));
   const blocked = customers.filter((customer) => customer.blocked);
   const lists: Record<Filter, typeof customers> = { all: customers, active, blocked };
 

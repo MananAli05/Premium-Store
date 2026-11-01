@@ -123,9 +123,9 @@ export default function ImagePicker({ image, onChange, label = "Choose screensho
         className="w-full rounded-2xl border border-dashed border-black/15 bg-[var(--bg)]/50 hover:border-[color-mix(in_srgb,var(--accent)_55%,transparent)] transition overflow-hidden"
       >
         {image ? (
-          <img src={image} alt="Selected screenshot" className="w-full max-h-64 object-contain bg-black/5" />
+          <img src={image} alt="Selected screenshot" className="w-full max-h-40 object-contain bg-black/5" />
         ) : (
-          <div className="py-8 flex flex-col items-center gap-2 text-[var(--muted)]">
+          <div className="py-5 flex flex-col items-center gap-2 text-[var(--muted)]">
             <div className="size-11 rounded-full bg-black/[0.04] grid place-items-center text-[var(--text)]">
               <ImageIcon size={19} />
             </div>

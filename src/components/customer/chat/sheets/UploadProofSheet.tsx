@@ -56,7 +56,7 @@ export default function UploadProofSheet({ customerId, pageReloaded, onClose }: 
       <ImagePicker image={screenshot} onChange={setScreenshot} failedUploads={failedUploads} customerId={customerId} pageReloaded={pageReloaded} />
 
       <label className="block mt-4">
-        <span className="text-[13px] font-medium">Please enter your sender name, not a bank name</span>
+        <span className="text-[13px] font-medium">Enter Sender Account Name (Not Bank or Wallet Name)</span>
         <input
           value={senderName}
           onChange={(event) => updateSenderName(event.target.value)}

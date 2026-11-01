@@ -46,6 +46,10 @@ export default function CustomerApp() {
     }
   }, [customer, user]);
 
+  useEffect(() => {
+    if (customer?.blocked) signOut().then(stopSync);
+  }, [customer?.blocked]);
+
   usePresence(customer?.id);
 
   const handleSignOut = async () => {
@@ -60,7 +64,7 @@ export default function CustomerApp() {
 
   return (
     <div className="customer-app min-h-dvh w-full bg-[var(--page)] flex" style={themeStyle}>
-      {checking || (user && !customer) ? (
+      {checking || (user && !customer) || customer?.blocked ? (
         <LoadingScreen />
       ) : customer && !customer.whatsapp ? (
         <WhatsAppScreen customerId={customer.id} onSignOut={askToSignOut} />
