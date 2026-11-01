@@ -17,7 +17,7 @@ export default function AdminSidebar({ current, onNavigate, onSignOut }: AdminSi
   const inboxCounts = countInboxTabs(state);
 
   const items: { section: Section; label: string; icon: React.ReactNode; count?: number }[] = [
-    { section: "dashboard", label: "Dashboard", icon: <LayoutDashboard size={17} /> },
+    { section: "dashboard", label: "Home", icon: <LayoutDashboard size={17} /> },
     { section: "inbox", label: "Inbox", icon: <Inbox size={17} />, count: inboxCounts.pending + inboxCounts.issues },
     { section: "bot", label: "Bot chat", icon: <Bot size={17} /> },
     { section: "settings", label: "Settings", icon: <Settings size={17} /> },

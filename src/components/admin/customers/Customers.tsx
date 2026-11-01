@@ -35,7 +35,7 @@ export default function Customers({ onNavigate }: { onNavigate: Navigate }) {
               onClick={() => onNavigate({ section: "dashboard" })}
               className="mb-3 inline-flex items-center gap-1.5 h-9 pl-2.5 pr-3.5 rounded-xl bg-[#0C2660] text-white text-[13px] font-semibold shadow-[0_6px_16px_-8px_rgba(12,38,96,0.6)] hover:bg-[#0a1f52] active:scale-[0.98] transition"
             >
-              <ArrowLeft size={16} /> Dashboard
+              <ArrowLeft size={16} /> Home
             </button>
             <h1 className="text-[22px] font-semibold tracking-tight">Customer list</h1>
             <p className="text-[13.5px] text-zinc-500 mt-0.5">{state.customers.length} customers. Each one sees only their own chat.</p>

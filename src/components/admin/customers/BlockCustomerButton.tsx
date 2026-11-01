@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { classNames } from "@/lib/format";
 import { blockCustomer, unblockCustomer } from "@/lib/store/admin";
+import { customerTitle } from "@/lib/store/helpers";
 import { useAppState } from "@/lib/store/state";
 import type { Customer } from "@/lib/types";
 import ConfirmDialog from "../ui/ConfirmDialog";
@@ -34,7 +35,7 @@ export default function BlockCustomerButton({ customer, compact = false, pill = 
         <button onClick={() => setOpen(true)} className={pill ? `${pillClass} bg-red-500 text-white` : compact ? buttonClass : `w-full ${actionButton.blocked}`}>
           Unblock
         </button>
-        {open && <ConfirmDialog description={`${customer.email} will be able to use the chat again.`} confirmLabel="Yes, unblock" onConfirm={() => unblockCustomer(customer.id)} onClose={() => setOpen(false)} />}
+        {open && <ConfirmDialog description={`${customerTitle(customer)} will be able to use the chat again.`} confirmLabel="Yes, unblock" onConfirm={() => unblockCustomer(customer.id)} onClose={() => setOpen(false)} />}
       </>
     );
   }
@@ -63,7 +64,7 @@ function BlockDialog({ customer, onClose }: { customer: Customer; onClose: () =>
   };
 
   return (
-    <Modal title="Block customer" description={`${customer.email} will see this reason`} onClose={onClose}>
+    <Modal title="Block customer" description={`${customerTitle(customer)} will see this reason`} onClose={onClose}>
       <div className="space-y-1.5">
         {[...reasons, OTHER].map((item) => (
           <button

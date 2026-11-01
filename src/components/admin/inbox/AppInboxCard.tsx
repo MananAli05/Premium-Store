@@ -163,7 +163,7 @@ export default function AppInboxCard({ tab, item, now, onOpenChat }: AppInboxCar
       )}
       {dialog === "reply" && <ReplyDialog customerId={item.customerId} onClose={close} />}
       {dialog === "unblock" && customer && (
-        <ConfirmDialog description={`${customer.email} will be able to use the chat again.`} confirmLabel="Yes, unblock" onConfirm={() => unblockCustomer(customer.id)} onClose={close} />
+        <ConfirmDialog description={`${customerTitle(customer)} will be able to use the chat again.`} confirmLabel="Yes, unblock" onConfirm={() => unblockCustomer(customer.id)} onClose={close} />
       )}
     </div>
   );
