@@ -51,7 +51,7 @@ function ImageViewer({ url, alt, onClose }: { url: string; alt: string; onClose:
       <button onClick={onClose} className="absolute top-4 right-4 size-10 grid place-items-center rounded-full bg-white/10 text-white hover:bg-white/20" aria-label="Close">
         <X size={20} />
       </button>
-      <img src={url} alt={alt} className="max-h-full max-w-full rounded-lg object-contain" onClick={(event) => event.stopPropagation()} />
+      <img src={url} alt={alt} className="max-h-[calc(100dvh-2rem)] max-w-[calc(100vw-2rem)] rounded-lg object-contain" onClick={(event) => event.stopPropagation()} />
     </div>,
     document.body
   );
