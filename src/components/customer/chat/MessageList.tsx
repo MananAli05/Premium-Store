@@ -6,11 +6,13 @@ import BrandIcon from "@/components/BrandIcon";
 import { useFloatingDay } from "@/hooks/useFloatingDay";
 import { useNow } from "@/hooks/useNow";
 import { chatDayLabel, pakistanDay } from "@/lib/format";
+import OlderMessagesButton from "@/components/OlderMessagesButton";
 import { useAppState } from "@/lib/store/state";
 import type { Message, Stage } from "@/lib/types";
 import MessageItem from "./MessageItem";
 
 type MessageListProps = {
+  customerId: string;
   messages: Message[];
   typing: boolean;
   stage: Stage;
@@ -19,7 +21,7 @@ type MessageListProps = {
 
 const MINUTE = 60_000;
 
-export default function MessageList({ messages, typing, stage, keepsChat }: MessageListProps) {
+export default function MessageList({ customerId, messages, typing, stage, keepsChat }: MessageListProps) {
   const inactiveAfter = useAppState().settings.timers.inactiveMinutes * MINUTE;
   const now = useNow(60_000);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -62,6 +64,7 @@ export default function MessageList({ messages, typing, stage, keepsChat }: Mess
       </div>
       <div ref={contentRef} className="max-w-[860px] mx-auto px-4 md:px-8 py-5 md:py-7 space-y-1.5">
         {!keepsChat && <PrivacyNote />}
+        <OlderMessagesButton customerId={customerId} className="bg-[var(--surface)] border-[var(--line)] text-[var(--muted)]" />
 
         {messages.map((message, index) => {
           const previous = messages[index - 1];

@@ -1,7 +1,7 @@
 import { formatMoney, timeAgo } from "@/lib/format";
 import { canStillPay, customerNumberLabel, customerTitle, findCustomerTitle } from "@/lib/store/helpers";
 import { customerMessages, lastCustomerMessageAt } from "@/lib/store/messageIndex";
-import type { AppState, InboxTab, Message, Order, OrderStatus, Ticket } from "@/lib/types";
+import type { AppState, Conversation, InboxTab, Message, Order, OrderStatus, Ticket } from "@/lib/types";
 
 export type BotFilter = "active_orders" | "cancelled" | "active_chats" | "inactive_chats";
 
@@ -68,9 +68,15 @@ function orderItem(state: AppState, order: Order, time: number, subtitle: string
   };
 }
 
+const CHAT_KEPT_MS = 15 * 24 * 60 * 60_000;
+
+function hasChat(state: AppState, conversation: Conversation, now: number) {
+  return customerMessages(state, conversation.customerId).length > 0 || now - conversation.lastMessageAt < CHAT_KEPT_MS;
+}
+
 function chatItems(state: AppState, active: boolean, now: number): InboxItem[] {
   return Object.values(state.conversations)
-    .filter((conversation) => customerMessages(state, conversation.customerId).length > 0)
+    .filter((conversation) => hasChat(state, conversation, now))
     .filter((conversation) => isCustomerActive(state, conversation.customerId, now) === active)
     .map((conversation) => ({ conversation, activeAt: lastActivityAt(state, conversation.customerId) }))
     .sort((a, b) => b.activeAt - a.activeAt)

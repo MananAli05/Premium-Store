@@ -343,7 +343,7 @@ async function fetchEverything(client: SupabaseClient, messagesSince?: number) {
 // After a full load, the regular checks ask only for rows changed since the last check (updated_at,
 // set by the database). Nothing changed means almost no data. Until the updated_at columns exist
 // (supabase/updates/023_updated_at.sql) the app keeps loading everything as before.
-const CHANGES_OVERLAP_MS = 60_000;
+const CHANGES_OVERLAP_MS = 15_000;
 const FULL_LOAD_EVERY_MS = 24 * 60 * 60_000;
 const CHAT_KEPT_MS = 15 * 24 * 60 * 60_000;
 let changesSince: number | null = null;
@@ -360,7 +360,13 @@ async function fetchChanges(client: SupabaseClient, since: number) {
 }
 
 // A row from the server, keeping the columns this device changed in the last few seconds.
+function hiddenOlderMessage(draft: AppState, row: Row) {
+  if (Number(row.created_at) > chatShownFrom() || loadedChats.has(String(row.customer_id))) return false;
+  return !draft.messages.some((message) => message.id === String(row.id));
+}
+
 function mergeRemoteRow(draft: AppState, table: TableSync, row: Row) {
+  if (table.name === "messages" && hiddenOlderMessage(draft, row)) return;
   const ownColumns = recentlyWrittenColumns(table.name, String(row[table.key]));
   if (!ownColumns) return table.apply(draft, row);
   const localItem = table.items(draft).find((item) => table.idOf(item) === String(row[table.key]));
@@ -418,7 +424,7 @@ async function catchUpChanges(client: SupabaseClient): Promise<ChangesResult> {
 // The data is kept on the device: a signed-in customer can open the chat without a connection, and the
 // admin panel opens at once with what it showed last time while the fresh data loads.
 let cacheKey = "";
-const cacheVersion = () => (activeRole === "admin" ? 3 : 2);
+const cacheVersion = () => (activeRole === "admin" ? 4 : 3);
 let cacheTimer: ReturnType<typeof setTimeout> | undefined;
 const CACHE_DELAY_MS = 1500;
 
@@ -440,9 +446,9 @@ function writeCache() {
   if (!cacheKey) return;
   try {
     const state = getState();
-    const recentFrom = serverNow() - RECENT_MESSAGES_MS;
+    const recentFrom = chatShownFrom();
     const rowsFor = (table: TableSync) =>
-      table.name === "messages" && activeRole === "admin" ? table.readRows({ ...state, messages: state.messages.filter((message) => message.createdAt > recentFrom) }) : table.readRows(state);
+      table.name === "messages" ? table.readRows({ ...state, messages: state.messages.filter((message) => message.createdAt > recentFrom) }) : table.readRows(state);
     const snapshot = {
       version: cacheVersion(),
       tables: Object.fromEntries(tables.map((table) => [table.name, rowsFor(table)])),
@@ -472,6 +478,7 @@ function loadCache() {
       tables.forEach((table) => table.replaceAll(draft, snapshot.tables[table.name] ?? []));
       Object.assign(draft, configFromRow(snapshot.config));
       removeOldMessages(draft);
+      draft.messages = draft.messages.filter((message) => message.createdAt > chatShownFrom());
       draft.loaded = true;
     });
     changesSince = snapshot.changesSince ?? null;
@@ -484,11 +491,15 @@ function loadCache() {
 
 const LOAD_RETRY_MS = 5000;
 
-// The admin panel opens with the last two days of chat; older messages follow in the background.
-const RECENT_MESSAGES_MS = 2 * 24 * 60 * 60_000;
-let olderMessagesLoaded = false;
-let olderMessagesDone = false;
+// Chats open with today and yesterday (Pakistan time); older messages load only when asked for.
+const DAY_MS = 24 * 60 * 60_000;
+const PAKISTAN_OFFSET_MS = 5 * 60 * 60_000;
 const loadedChats = new Set<string>();
+const olderChats = new Map<string, boolean>();
+
+export function chatShownFrom() {
+  return Math.floor((serverNow() + PAKISTAN_OFFSET_MS) / DAY_MS) * DAY_MS - PAKISTAN_OFFSET_MS - DAY_MS;
+}
 
 function mergeOlderMessages(rows: Row[]) {
   applyRemoteChange((draft) => {
@@ -498,38 +509,29 @@ function mergeOlderMessages(rows: Row[]) {
   });
 }
 
-export function chatHistoryReady(customerId: string) {
-  return activeRole !== "admin" || olderMessagesDone || loadedChats.has(customerId);
+export async function hasOlderChat(customerId: string): Promise<boolean | null> {
+  if (loadedChats.has(customerId)) return false;
+  const known = olderChats.get(customerId);
+  if (known !== undefined) return known;
+  const { data, error } = await getActiveClient().from("messages").select("id").eq("customer_id", customerId).lt("created_at", chatShownFrom()).limit(1);
+  if (error || !data) return null;
+  olderChats.set(customerId, data.length > 0);
+  return data.length > 0;
 }
 
-// Opening a chat before the older messages have arrived loads that one chat straight away.
-export async function loadChatHistory(customerId: string) {
-  if (chatHistoryReady(customerId)) return;
-  const { data, error } = await getSupabase("admin").from("messages").select("*").eq("customer_id", customerId).order("created_at");
-  if (error || !data || activeRole !== "admin") return;
+export async function loadOlderChat(customerId: string) {
+  const { data, error } = await getActiveClient().from("messages").select("*").eq("customer_id", customerId).lt("created_at", chatShownFrom()).order("created_at");
+  if (error || !data || !activeRole) return false;
   loadedChats.add(customerId);
+  olderChats.set(customerId, false);
   mergeOlderMessages(data);
+  return true;
 }
 
 function recentMessagesFrom() {
-  return activeRole === "admin" ? serverNow() - RECENT_MESSAGES_MS : undefined;
+  return chatShownFrom();
 }
 
-async function loadOlderMessages(client: SupabaseClient) {
-  if (activeRole !== "admin" || olderMessagesLoaded) return;
-  olderMessagesLoaded = true;
-  const messages = tables.find((table) => table.name === "messages")!;
-  const result = await fetchAllRows(client, messages, undefined, undefined, serverNow() - RECENT_MESSAGES_MS + 60 * 60_000);
-  if (activeRole !== "admin") return;
-  if (!result.data) {
-    olderMessagesLoaded = false;
-  olderMessagesDone = false;
-  loadedChats.clear();
-    return;
-  }
-  mergeOlderMessages(result.data);
-  olderMessagesDone = true;
-}
 let loadRetryTimer: ReturnType<typeof setTimeout> | undefined;
 
 // The first load must be complete before anything shows; half a load would look like the data was gone.
@@ -544,7 +546,6 @@ async function loadEverything(client: SupabaseClient) {
     // A change made on the device's copy while loading is newer than this load, so it loads again.
     if (version === localVersion || attempt === 2) {
       await applyEverything(client, data, startedAt);
-      void loadOlderMessages(client);
       return;
     }
   }
@@ -616,8 +617,8 @@ const CATCH_UP_AFTER_HIDDEN_MS = 10_000;
 let hiddenSince = 0;
 
 // A phone can lose the live connection without saying so, even with the app on screen.
-// Both apps therefore refresh every 20 seconds; messages only for the last 30 minutes to keep it light.
-const ADMIN_REFRESH_MS = 20_000;
+// Both apps therefore refresh every minute; messages only for the last 30 minutes to keep it light.
+const ADMIN_REFRESH_MS = 60_000;
 const ADMIN_REFRESH_MESSAGES_MS = 30 * 60_000;
 let refreshTimer: ReturnType<typeof setInterval> | undefined;
 
@@ -642,7 +643,6 @@ async function catchUp(recentMessagesOnly = false, fullLoadNeeded = false) {
     // Only what changed, with a full load once a day in case something was missed.
     if (!fullLoadNeeded && changesSupported && Date.now() - lastFullLoadAt < FULL_LOAD_EVERY_MS) {
       const result = await catchUpChanges(client);
-      if (result === "done") void loadOlderMessages(client);
       if (result !== "unsupported") return;
     }
     const fullLoad = !recentMessagesOnly;
@@ -703,7 +703,6 @@ export async function startSync(role: AppRole) {
   // With a copy from the last day, only what changed since then is loaded.
   const fresh = cached && changesSince !== null && Date.now() - lastFullLoadAt < FULL_LOAD_EVERY_MS;
   if (!fresh || (await catchUpChanges(client)) === "unsupported") await loadEverything(client);
-  else void loadOlderMessages(client);
   setChangeHandler(handleLocalChange);
   listenForChanges(client);
   document.addEventListener("visibilitychange", handleVisibility);
@@ -732,7 +731,8 @@ export async function stopSync() {
   cacheKey = "";
   changesSince = null;
   lastFullLoadAt = 0;
-  olderMessagesLoaded = false;
+  loadedChats.clear();
+  olderChats.clear();
   changesSupported = true;
   window.removeEventListener("online", handleOnline);
   window.removeEventListener("pagehide", flushCache);

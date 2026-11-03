@@ -34,7 +34,7 @@ export default function ChatScreen({ customer, onSignOut }: ChatScreenProps) {
   const { online, waiting } = useConnection();
 
   useEffect(() => {
-    openChat(customer.id);
+    void openChat(customer.id);
   }, [customer.id]);
 
   useEffect(() => {
@@ -71,7 +71,7 @@ export default function ChatScreen({ customer, onSignOut }: ChatScreenProps) {
           No internet. Your messages will be sent when you are back online.
         </div>
       )}
-      <MessageList messages={messages} typing={conversation.typing} stage={conversation.stage} keepsChat={keepsChat(state, customer.id)} />
+      <MessageList customerId={customer.id} messages={messages} typing={conversation.typing} stage={conversation.stage} keepsChat={keepsChat(state, customer.id)} />
 
       {waiting ? (
         <div className="shrink-0 px-4 py-4 text-center text-[13.5px] text-[var(--muted)] border-t border-[var(--line)]">Waiting for the internet to continue…</div>

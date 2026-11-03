@@ -3,7 +3,7 @@ import { formatDuration, getEffectiveStatus } from "../availability";
 import { serverNow } from "../clock";
 import { getSupabase } from "../supabase/client";
 import { uploadScreenshot } from "../supabase/screenshots";
-import { saveProofNow } from "../supabase/sync";
+import { hasOlderChat, saveProofNow } from "../supabase/sync";
 import { recordUploadProblem } from "../supabase/uploadProblems";
 import type { AppState, Customer, Stage, TicketKind } from "../types";
 import { validateName } from "../validation";
@@ -126,14 +126,16 @@ export function ensureCustomerProfile(user: User) {
   });
 }
 
-export function openChat(customerId: string) {
+export async function openChat(customerId: string) {
+  const shown = getState().messages.some((message) => message.customerId === customerId);
+  const hasHistory = shown || (await hasOlderChat(customerId)) !== false;
+
   updateState((state) => {
     const customer = state.customers.find((item) => item.id === customerId);
     const conversation = state.conversations[customerId];
     if (!customer || !conversation) return;
 
-    const hasMessages = state.messages.some((message) => message.customerId === customerId);
-    if (!hasMessages) {
+    if (!hasHistory) {
       addMessage(state, customerId, "bot", `Hi there. ${state.settings.welcome}`);
       return;
     }

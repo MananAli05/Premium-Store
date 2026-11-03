@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { ChevronLeft } from "lucide-react";
 import { useFloatingDay } from "@/hooks/useFloatingDay";
 import { useNow } from "@/hooks/useNow";
@@ -8,7 +8,7 @@ import { chatDayLabel, classNames, pakistanDay } from "@/lib/format";
 import { customerNumberLabel, customerTitle } from "@/lib/store/helpers";
 import { customerMessages } from "@/lib/store/messageIndex";
 import { useAppState } from "@/lib/store/state";
-import { chatHistoryReady, loadChatHistory } from "@/lib/supabase/sync";
+import OlderMessagesButton from "@/components/OlderMessagesButton";
 import type { Message } from "@/lib/types";
 import CustomerAvatar from "../ui/CustomerAvatar";
 import { isCustomerActive } from "./inboxItems";
@@ -36,17 +36,6 @@ export default function ChatThread({ customerId, onBack, onShowDetails }: ChatTh
   const customer = state.customers.find((item) => item.id === customerId);
   const conversation = state.conversations[customerId];
   const messages = customerMessages(state, customerId);
-  const [loadingHistory, setLoadingHistory] = useState(() => !chatHistoryReady(customerId));
-
-  useEffect(() => {
-    if (chatHistoryReady(customerId)) return;
-    let current = true;
-    loadChatHistory(customerId).finally(() => current && setLoadingHistory(false));
-    return () => {
-      current = false;
-    };
-  }, [customerId]);
-
   useLayoutEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages.length, customerId]);
@@ -81,8 +70,8 @@ export default function ChatThread({ customerId, onBack, onShowDetails }: ChatTh
           </span>
         </div>
         <div className="max-w-[760px] mx-auto">
-          {loadingHistory && <div className="text-center text-[12px] text-zinc-400 pb-3">Loading messages…</div>}
-          {messages.length === 0 && !loadingHistory && <div className="text-center text-[12.5px] text-zinc-400 py-10">No messages yet.</div>}
+          <OlderMessagesButton customerId={customerId} className="bg-white border-zinc-200 text-zinc-600 hover:bg-zinc-50" />
+          {messages.length === 0 && <div className="text-center text-[12.5px] text-zinc-400 py-10">No messages yet.</div>}
           {messages.map((message, index) => {
             const last = endsGroup(message, messages[index + 1]);
             const previous = messages[index - 1];
