@@ -229,6 +229,12 @@ test("cancel asks first, and keeping the order leaves it open", async (t) => {
   if (!(await createOrder(page))) return t.skip("the store is not taking orders right now");
   await click(page, "Cancel");
   assert.ok(await page.isVisible("text=Cancel this order?"), "a confirm pop-up opens");
+  const viewport = page.viewportSize();
+  const dialog = await page.locator("[role=dialog] >> text=Cancel this order?").boundingBox();
+  const confirm = await page.locator("button:has-text('Yes, cancel')").boundingBox();
+  assert.ok(dialog.y > viewport.height * 0.25 && dialog.y < viewport.height * 0.6, "the pop-up sits in the middle of the screen");
+  assert.ok(confirm.y + confirm.height < viewport.height, "the buttons are fully on screen");
+  await page.screenshot({ path: process.env.POPUP_SHOT ?? "popup.png" });
   await click(page, "No, keep it");
   assert.ok(await page.isVisible("button:has-text('Upload payment screenshot')"), "the order is still open");
   assert.equal(await page.locator("text=I don't want to continue this order").count(), 0, "nothing was cancelled");
