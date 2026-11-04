@@ -73,6 +73,7 @@ test("a cancel made offline is saved when the connection returns", async (t) => 
 
   await context.setOffline(true);
   await click(page, "Cancel");
+  await click(page, "Yes, cancel");
   await wait(2000);
   assert.deepEqual(await savedState(email), { order: "awaiting_payment", cancelMessages: 0 }, "nothing reaches the server while offline");
 
@@ -90,6 +91,7 @@ test("a cancel made offline is saved even after the app was closed", async (t) =
 
   await context.setOffline(true);
   await click(page, "Cancel");
+  await click(page, "Yes, cancel");
   await page.close();
   await context.setOffline(false);
 

@@ -5,7 +5,7 @@ import { getSupabase } from "../supabase/client";
 import { uploadScreenshot } from "../supabase/screenshots";
 import { hasOlderChat, saveProofNow } from "../supabase/sync";
 import { recordUploadProblem } from "../supabase/uploadProblems";
-import type { AppState, Customer, Stage, TicketKind } from "../types";
+import type { AppState, Customer, Order, Stage, TicketKind } from "../types";
 import { validateName } from "../validation";
 import { hasWaitingReplies } from "./connection";
 import { ADMIN_CANCEL_REASON, addMessage, botText, canStillPay, createOrderNumber, createTicketNumber, fillPlaceholders, findCustomerTitle, getActiveOrder, notifyAdmin, replyAsBot } from "./helpers";
@@ -346,30 +346,20 @@ export function showHowItWorks(customerId: string) {
 }
 
 export function createOrder(customerId: string) {
-  if (botIsReplying(customerId)) return;
+  if (botIsReplying(customerId) || getState().conversations[customerId]?.stage !== "terms") return;
+  let order: Order | undefined;
+
   updateState((state) => {
     addMessage(state, customerId, "customer", "Create order");
-  });
-
-  replyAsBot(customerId, (state) => {
     const conversation = state.conversations[customerId];
     const plan = state.plans.find((item) => item.id === conversation.planId);
     const method = state.methods.find((item) => item.id === conversation.methodId);
-    if (!plan || !method) return;
-
-    // The store may have closed while the customer was choosing a plan.
     const status = getEffectiveStatus(state.settings);
-    if (status === "offline" || status === "away_closed") {
-      addMessage(state, customerId, "bot", fillPlaceholders(state.settings.statusMessages[status], state));
-      conversation.stage = "menu";
-      return;
-    }
+    if (!plan || !method || status === "offline" || status === "away_closed") return;
 
     const now = serverNow();
-    const orderId = createOrderNumber();
-
-    state.orders.unshift({
-      id: orderId,
+    order = {
+      id: createOrderNumber(),
       customerId,
       planId: plan.id,
       planName: plan.name,
@@ -381,12 +371,24 @@ export function createOrder(customerId: string) {
       codeUnused: false,
       createdAt: now,
       expiresAt: now + state.settings.timers.orderMinutes * MINUTE,
-    });
-
-    addMessage(state, customerId, "bot", botText(state, "orderCreated", { order_id: orderId, plan: plan.name }), { kind: "payment", orderId });
-
-    conversation.activeOrderId = orderId;
+    };
+    state.orders.unshift(order);
+    conversation.activeOrderId = order.id;
     conversation.stage = "awaiting_payment";
+  });
+
+  replyAsBot(customerId, (state) => {
+    if (order) {
+      addMessage(state, customerId, "bot", botText(state, "orderCreated", { order_id: order.id, plan: order.planName }), { kind: "payment", orderId: order.id });
+      return;
+    }
+
+    // The store may have closed while the customer was choosing a plan.
+    const status = getEffectiveStatus(state.settings);
+    if (status === "offline" || status === "away_closed") {
+      addMessage(state, customerId, "bot", fillPlaceholders(state.settings.statusMessages[status], state));
+      state.conversations[customerId].stage = "menu";
+    }
   });
 }
 
@@ -489,12 +491,15 @@ export async function submitPaymentProof(customerId: string, screenshot: string,
   return null;
 }
 
+const SCREENSHOT_NOT_SENT = "Your screenshot could not be sent. Please try again, or remove it and send without it.";
+
 async function uploadOptional(customerId: string, screenshot?: string) {
-  if (!screenshot) return undefined;
+  if (!screenshot) return { path: undefined };
   try {
-    return await uploadScreenshot(customerId, screenshot);
-  } catch {
-    return undefined;
+    return { path: await uploadScreenshot(customerId, screenshot) };
+  } catch (problem) {
+    recordUploadProblem(`Optional upload failed: ${problem instanceof Error ? problem.message : problem} (${Math.round(screenshot.length / 1024)} KB)`);
+    return null;
   }
 }
 
@@ -540,7 +545,7 @@ function issueStage(state: AppState, customerId: string): Stage {
   return lastAdmin > lastCustomer ? "agent_replied" : "waiting_agent";
 }
 
-export async function submitSupportIssue(customerId: string, description: string, screenshot?: string) {
+export async function submitSupportIssue(customerId: string, description: string, screenshot?: string): Promise<string | null> {
   // The store may have closed while the customer was writing the issue.
   const status = getEffectiveStatus(getState().settings);
   if (status === "offline" || status === "away_closed") {
@@ -548,10 +553,12 @@ export async function submitSupportIssue(customerId: string, description: string
       addMessage(state, customerId, "bot", fillPlaceholders(state.settings.supportClosedMessages[status], state));
       state.conversations[customerId].stage = "support";
     });
-    return;
+    return null;
   }
 
-  const screenshotPath = await uploadOptional(customerId, screenshot);
+  const upload = await uploadOptional(customerId, screenshot);
+  if (!upload) return SCREENSHOT_NOT_SENT;
+  const screenshotPath = upload.path;
   const ticketId = createTicketNumber();
 
   updateState((state) => {
@@ -569,10 +576,13 @@ export async function submitSupportIssue(customerId: string, description: string
     addMessage(state, customerId, "bot", fillPlaceholders(message, state).replaceAll("{ticket_id}", ticketId));
     state.conversations[customerId].stage = "waiting_agent";
   });
+  return null;
 }
 
-export async function sendIssueFollowUp(customerId: string, text: string, screenshot?: string) {
-  const screenshotPath = await uploadOptional(customerId, screenshot);
+export async function sendIssueFollowUp(customerId: string, text: string, screenshot?: string): Promise<string | null> {
+  const upload = await uploadOptional(customerId, screenshot);
+  if (!upload) return SCREENSHOT_NOT_SENT;
+  const screenshotPath = upload.path;
 
   updateState((state) => {
     addMessage(state, customerId, "customer", text);
@@ -581,6 +591,7 @@ export async function sendIssueFollowUp(customerId: string, text: string, screen
     conversation.unreadByAdmin += 1;
     conversation.stage = "waiting_agent";
   });
+  return null;
 }
 
 // App issues ("support") and payment issues are separate: each kind has its own open request.
@@ -659,8 +670,10 @@ export function repliesLeftAfterRejection(state: AppState, customerId: string) {
   return Math.max(0, state.settings.limits.repliesAfterRejection - sent);
 }
 
-export async function sendRejectionReply(customerId: string, text: string, screenshot?: string) {
-  const screenshotPath = await uploadOptional(customerId, screenshot);
+export async function sendRejectionReply(customerId: string, text: string, screenshot?: string): Promise<string | null> {
+  const upload = await uploadOptional(customerId, screenshot);
+  if (!upload) return SCREENSHOT_NOT_SENT;
+  const screenshotPath = upload.path;
 
   updateState((state) => {
     addMessage(state, customerId, "customer", text);
@@ -668,5 +681,6 @@ export async function sendRejectionReply(customerId: string, text: string, scree
     state.conversations[customerId].unreadByAdmin += 1;
     notifyAdmin(state, { kind: "payment", title: "Reply to a rejected payment", body: `${findCustomerTitle(state, customerId)} · ${text.slice(0, 70)}`, customerId });
   });
+  return null;
 }
 

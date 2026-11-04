@@ -74,6 +74,7 @@ test("a payment problem shows the steps and app issues stay open", async (t) => 
   assert.equal(await page.locator("textarea").count(), 0, "no report form");
   await click(page, "Got it");
   await click(page, "Cancel");
+  await click(page, "Yes, cancel");
   if (await page.isVisible("button:has-text('Main menu')")) await click(page, "Main menu");
   await click(page, "Customer Support");
   await click(page, "Other issues");
@@ -203,6 +204,52 @@ test("a proof the server refuses stays in the sheet with a clear reason", async 
   assert.deepEqual(errors, []);
 });
 
+test("an order is made even when the customer leaves for the payment app straight away", async (t) => {
+  const { page, errors } = await newCustomer();
+  await click(page, "Buy a Subscription");
+  if (!(await page.isVisible("button:has-text('1 Month')"))) return t.skip("the store is not taking orders right now");
+  await click(page, "1 Month");
+  await click(page, "JazzCash");
+  await page.click("button:has-text('I agree, create order'), button:has-text('Create order')");
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  assert.equal(await page.locator("text=/^Order PS-/i").count(), 1, "the order is there before the page comes back");
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await page.waitForSelector("button:has-text('Upload payment screenshot')", { timeout: 15000 });
+  assert.deepEqual(errors, []);
+});
+
+test("cancel asks first, and keeping the order leaves it open", async (t) => {
+  const { page, errors } = await newCustomer();
+  if (!(await createOrder(page))) return t.skip("the store is not taking orders right now");
+  await click(page, "Cancel");
+  assert.ok(await page.isVisible("text=Cancel this order?"), "a confirm pop-up opens");
+  await click(page, "No, keep it");
+  assert.ok(await page.isVisible("button:has-text('Upload payment screenshot')"), "the order is still open");
+  assert.equal(await page.locator("text=I don't want to continue this order").count(), 0, "nothing was cancelled");
+  assert.deepEqual(errors, []);
+});
+
+test("a support screenshot that cannot be sent is not dropped silently", async (t) => {
+  const { page, errors } = await newCustomer();
+  await click(page, "Customer Support");
+  if (await page.isVisible("text=Admin not available")) return t.skip("the store is closed right now");
+  await click(page, "Other issues");
+  if (!(await page.isVisible("textarea"))) return t.skip("the store is not taking requests right now");
+  await page.route("**/storage/v1/object/**", (route) => (route.request().method() === "POST" ? route.abort() : route.continue()));
+  await page.fill("textarea", "Screenshot that cannot be sent in the end-to-end test.");
+  await (await page.$("input[type=file]")).setInputFiles({ name: "issue.png", mimeType: "image/png", buffer: tinyPng });
+  await click(page, "Send to our team");
+  await page.waitForSelector("text=Your screenshot could not be sent", { timeout: 20000 });
+  assert.ok(await page.isVisible("textarea"), "the request form stays open");
+  assert.deepEqual(errors, []);
+});
+
 test("tapping create order twice makes only one order", async (t) => {
   const { page, errors } = await newCustomer();
   await click(page, "Buy a Subscription");
@@ -316,6 +363,7 @@ test("after several cancelled orders, other issues wait for the timer but common
   for (let round = 0; round < 2; round++) {
     if (!(await createOrder(page))) return t.skip("the store is not taking orders right now");
     await click(page, "Cancel");
+    await click(page, "Yes, cancel");
     await wait(1500);
   }
   if (await page.isVisible("text=Continue")) return t.skip("these settings block the account after two cancels");
@@ -335,6 +383,7 @@ test("a blocked customer is signed out and sees the reason at the email step", a
   for (let round = 0; round < 2; round++) {
     if (!(await createOrder(page))) return t.skip("the store is not taking orders right now");
     await click(page, "Cancel");
+    await click(page, "Yes, cancel");
     await wait(1500);
   }
   if (!(await page.isVisible("text=Continue"))) return t.skip("these settings do not block after two cancels");

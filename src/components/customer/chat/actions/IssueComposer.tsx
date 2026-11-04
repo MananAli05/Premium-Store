@@ -33,7 +33,10 @@ export default function IssueComposer({ customerId }: { customerId: string }) {
       return;
     }
     setBusy(true);
-    await submitSupportIssue(customerId, description.trim(), screenshot ?? undefined);
+    const failed = await submitSupportIssue(customerId, description.trim(), screenshot ?? undefined);
+    if (!failed) return;
+    setBusy(false);
+    setError(failed);
   };
 
   return (

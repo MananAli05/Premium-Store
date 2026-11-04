@@ -14,6 +14,7 @@ import IssueFollowUp from "./actions/IssueFollowUp";
 import IssueStatus from "./actions/IssueStatus";
 import MenuOptions from "./actions/MenuOptions";
 import MethodOptions from "./actions/MethodOptions";
+import MissingOrderNotice from "./actions/MissingOrderNotice";
 import PaymentActions from "./actions/PaymentActions";
 import PendingOrderNotice from "./actions/PendingOrderNotice";
 import PlanOptions from "./actions/PlanOptions";
@@ -42,6 +43,7 @@ function AwaitingPaymentActions({ customerId, onOpenSheet }: Omit<ActionPanelPro
   const order = getActiveOrder(getState(), customerId);
   if (order?.status === "pending_review") return <PendingOrderNotice customerId={customerId} />;
   if (order?.status === "awaiting_payment" && !canStillPay(order, now)) return <ClosingOrderNotice />;
+  if (!order && getState().conversations[customerId]?.activeOrderId) return <MissingOrderNotice customerId={customerId} />;
   if (!order || !canStillPay(order, now)) return <BackToMenuButton customerId={customerId} />;
   return <PaymentActions customerId={customerId} method={findOrderMethod(getState(), customerId)} onOpenSheet={onOpenSheet} />;
 }

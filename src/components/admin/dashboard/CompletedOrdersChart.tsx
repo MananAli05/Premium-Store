@@ -1,38 +1,35 @@
 "use client";
 
 import { useState } from "react";
+import { useSwipe } from "@/hooks/useCategorySwipe";
 import { classNames } from "@/lib/format";
 import { useAppState } from "@/lib/store/state";
 import { Card, CardHeader } from "../ui/Card";
+import { completedWeek, oldestWeekBack, weekLabel } from "./completedWeek";
+import WeekArrows from "./WeekArrows";
 
-const DAYS = 7;
-const DAY = 24 * 60 * 60 * 1000;
 // Brand navy, brighter in dark mode (set in globals.css).
 const BAR_COLOR = "var(--admin-chart-bar, #0C2660)";
 
 export default function CompletedOrdersChart({ now }: { now: number }) {
   const state = useAppState();
   const [active, setActive] = useState<number | null>(null);
-
-  const startOfToday = new Date(now).setHours(0, 0, 0, 0);
-  const days = Array.from({ length: DAYS }, (_, index) => {
-    const start = startOfToday - (DAYS - 1 - index) * DAY;
-    const count = state.orders.filter((order) => order.status === "completed" && (order.reviewedAt ?? 0) >= start && (order.reviewedAt ?? 0) < start + DAY).length;
-    const date = new Date(start);
-    return {
-      count,
-      short: index === DAYS - 1 ? "Today" : date.toLocaleDateString("en-GB", { weekday: "short" }),
-      full: date.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "short" }),
-    };
-  });
+  const [weeksBack, setWeeksBack] = useState(0);
+  const oldest = oldestWeekBack(state.orders, now);
+  const days = completedWeek(state.orders, now, weeksBack);
+  const swipe = useSwipe(() => setWeeksBack(Math.max(0, weeksBack - 1)), () => setWeeksBack(Math.min(oldest, weeksBack + 1)));
 
   const total = days.reduce((sum, day) => sum + day.count, 0);
   const top = Math.max(4, Math.ceil(Math.max(...days.map((day) => day.count)) / 2) * 2);
 
   return (
     <Card>
-      <CardHeader title="Completed orders" description={`Last 7 days · ${total} completed`} />
-      <div className="px-5 pb-4">
+      <CardHeader
+        title="Completed orders"
+        description={`${weekLabel(days, weeksBack)} · ${total} completed`}
+        action={<WeekArrows weeksBack={weeksBack} oldest={oldest} onChange={setWeeksBack} />}
+      />
+      <div {...swipe} className="px-5 pb-4">
         <div className="relative h-52 ml-7 mb-6">
           {[0, 0.5, 1].map((fraction) => (
             <div key={fraction} className="absolute inset-x-0 border-t border-zinc-100" style={{ top: `${fraction * 100}%` }}>
@@ -73,7 +70,7 @@ export default function CompletedOrdersChart({ now }: { now: number }) {
         </div>
 
         <table className="sr-only">
-          <caption>Completed orders per day, last 7 days</caption>
+          <caption>Completed orders per day, {weekLabel(days, weeksBack)}</caption>
           <tbody>
             {days.map((day, index) => (
               <tr key={index}>

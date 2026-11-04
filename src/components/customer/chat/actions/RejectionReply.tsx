@@ -36,8 +36,12 @@ export default function RejectionReply({ customerId }: { customerId: string }) {
       return;
     }
     setBusy(true);
-    await sendRejectionReply(customerId, text.trim(), screenshot ?? undefined);
+    const failed = await sendRejectionReply(customerId, text.trim(), screenshot ?? undefined);
     setBusy(false);
+    if (failed) {
+      setError(failed);
+      return;
+    }
     setText("");
     setScreenshot(null);
     setShowPicker(false);

@@ -557,16 +557,30 @@ async function loadEverything(client: SupabaseClient) {
 }
 
 // startedAt marks a full load: later checks only ask for changes made after it.
+function unsentInserts() {
+  return new Set(outbox.flatMap((op) => (op.kind === "insert" ? op.rows.map((row) => `${op.table}:${row[op.key]}`) : [])));
+}
+
+export function refreshData() {
+  return catchUp(false, true);
+}
+
 async function applyEverything(client: SupabaseClient, { results, config, messagesSince }: Awaited<ReturnType<typeof fetchEverything>>, startedAt?: number) {
+  const unsent = unsentInserts();
   applyRemoteChange((draft) => {
     // A table that failed to load keeps what is on screen instead of being emptied.
     tables.forEach((table, index) => {
       const rows = results[index].data;
       if (!rows) return;
+      const waiting = table.items(draft).filter((item) => unsent.has(`${table.name}:${table.idOf(item)}`));
       if (messagesSince !== undefined && table.replaceRecent) {
         table.replaceRecent(draft, rows, messagesSince);
       } else {
         table.replaceAll(draft, rows);
+      }
+      // Rows still on their way to the server stay on screen.
+      for (const item of waiting) {
+        if (!table.items(draft).some((current) => table.idOf(current) === table.idOf(item))) table.apply(draft, table.toRow(item));
       }
     });
     if (config.data) Object.assign(draft, configFromRow(config.data));

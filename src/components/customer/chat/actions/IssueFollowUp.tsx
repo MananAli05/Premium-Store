@@ -20,7 +20,10 @@ export default function IssueFollowUp({ customerId }: { customerId: string }) {
       return;
     }
     setBusy(true);
-    await sendIssueFollowUp(customerId, text.trim(), screenshot ?? undefined);
+    const failed = await sendIssueFollowUp(customerId, text.trim(), screenshot ?? undefined);
+    if (!failed) return;
+    setBusy(false);
+    setError(failed);
   };
 
   return (

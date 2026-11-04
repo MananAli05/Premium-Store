@@ -1,3 +1,6 @@
+import { useState } from "react";
+import { XCircle } from "lucide-react";
+import ConfirmDialog from "@/components/ConfirmDialog";
 import { classNames } from "@/lib/format";
 import { cancelOrder } from "@/lib/store/customer";
 import { orderSteps } from "@/lib/store/helpers";
@@ -15,6 +18,7 @@ type PaymentActionsProps = {
 export default function PaymentActions({ customerId, method, onOpenSheet }: PaymentActionsProps) {
   const state = useAppState();
   const hasSteps = Boolean(method) && orderSteps(state, customerId).length > 0;
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
 
   return (
     <div className="max-w-[560px] mx-auto space-y-2">
@@ -30,10 +34,24 @@ export default function PaymentActions({ customerId, method, onOpenSheet }: Paym
         <button onClick={() => onOpenSheet("issue")} className={classNames(secondaryButtonClass, "text-[13px] text-amber-700")}>
           Problem?
         </button>
-        <button onClick={() => cancelOrder(customerId)} className={classNames(secondaryButtonClass, "text-[13px] text-[var(--muted)] hover:text-red-700")}>
+        <button onClick={() => setConfirmingCancel(true)} className={classNames(secondaryButtonClass, "text-[13px] text-[var(--muted)] hover:text-red-700")}>
           Cancel
         </button>
       </div>
+      {confirmingCancel && (
+        <ConfirmDialog
+          title="Cancel this order?"
+          message="Cancelling orders again and again can pause new orders for a while."
+          confirmLabel="Yes, cancel"
+          cancelLabel="No, keep it"
+          icon={XCircle}
+          onConfirm={() => {
+            setConfirmingCancel(false);
+            cancelOrder(customerId);
+          }}
+          onCancel={() => setConfirmingCancel(false)}
+        />
+      )}
     </div>
   );
 }

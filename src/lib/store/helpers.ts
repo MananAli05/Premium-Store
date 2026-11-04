@@ -66,19 +66,33 @@ export function notifyAdmin(state: AppState, notification: Omit<AdminNotificatio
   state.notifications = state.notifications.slice(0, 60);
 }
 
+const typingReplies = new Set<() => void>();
+
+if (typeof document !== "undefined") {
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") typingReplies.forEach((finish) => finish());
+  });
+}
+
 // The bot answers only with a connection; offline, the answer waits and comes when it is back.
+// A phone pauses a page in the background, so an answer that is still typing is sent before that.
 export function replyAsBot(customerId: string, reply: (state: AppState) => void) {
   whenOnline(() => {
     updateState((state) => {
       state.conversations[customerId].typing = true;
     });
 
-    setTimeout(() => {
+    const finish = () => {
+      clearTimeout(timer);
+      typingReplies.delete(finish);
       updateState((state) => {
         state.conversations[customerId].typing = false;
         reply(state);
       });
-    }, BOT_TYPING_DELAY);
+    };
+    const timer = setTimeout(finish, BOT_TYPING_DELAY);
+    typingReplies.add(finish);
+    if (document.visibilityState === "hidden") finish();
   });
 }
 

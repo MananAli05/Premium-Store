@@ -8,15 +8,15 @@ import { classNames } from "@/lib/format";
 import { useAppState } from "@/lib/store/state";
 import type { Navigate, NavTarget } from "../navigation";
 import { countBotFilters } from "../inbox/inboxItems";
-
-const DAYS = 7;
-const DAY = 24 * 60 * 60 * 1000;
+import { WEEK_DAYS, completedWeek, oldestWeekBack, weekLabel } from "./completedWeek";
+import WeekArrows from "./WeekArrows";
 
 // The dashboard inside the admin app: everything fits on one phone screen, above the app's tabs.
 export default function AppDashboard({ onNavigate }: { onNavigate: Navigate }) {
   const state = useAppState();
   const now = useNow(30_000);
-  const [pickedDay, setPickedDay] = useState(DAYS - 1);
+  const [pickedDay, setPickedDay] = useState(WEEK_DAYS - 1);
+  const [weeksBack, setWeeksBack] = useState(0);
 
   const botCounts = countBotFilters(state, now);
   const pending = state.orders.filter((order) => order.status === "pending_review" || order.status === "rejected").length;
@@ -29,12 +29,14 @@ export default function AppDashboard({ onNavigate }: { onNavigate: Navigate }) {
     { label: "Active orders", value: botCounts.active_orders, dot: "bg-[#0a84ff]", target: { section: "bot", botFilter: "active_orders" } },
   ];
 
-  const startOfToday = new Date(now).setHours(0, 0, 0, 0);
-  const days = Array.from({ length: DAYS }, (_, index) => {
-    const start = startOfToday - (DAYS - 1 - index) * DAY;
-    const count = state.orders.filter((order) => order.status === "completed" && (order.reviewedAt ?? 0) >= start && (order.reviewedAt ?? 0) < start + DAY).length;
-    return { count, label: index === DAYS - 1 ? "Today" : new Date(start).toLocaleDateString("en-GB", { weekday: "short" }) };
-  });
+  const oldest = oldestWeekBack(state.orders, now);
+  const week = completedWeek(state.orders, now, weeksBack);
+  const days = week.map((day) => ({ count: day.count, label: day.short }));
+  const showWeek = (next: number) => {
+    setWeeksBack(next);
+    setPickedDay(WEEK_DAYS - 1);
+  };
+  const chartSwipe = useSwipe(() => showWeek(Math.max(0, weeksBack - 1)), () => showWeek(Math.min(oldest, weeksBack + 1)));
   const total = days.reduce((sum, day) => sum + day.count, 0);
   const top = Math.max(4, ...days.map((day) => day.count));
 
@@ -74,16 +76,32 @@ export default function AppDashboard({ onNavigate }: { onNavigate: Navigate }) {
         ))}
       </div>
 
-      <div className="flex-1 min-h-[180px] flex flex-col rounded-[26px] bg-white px-4 pt-4 pb-3 shadow-[0_8px_24px_-16px_rgba(12,38,96,0.28)]">
+      <div
+        onTouchStart={(event) => {
+          event.stopPropagation();
+          chartSwipe.onTouchStart(event);
+        }}
+        onTouchEnd={(event) => {
+          event.stopPropagation();
+          chartSwipe.onTouchEnd(event);
+        }}
+        className="flex-1 min-h-[180px] flex flex-col rounded-[26px] bg-white px-4 pt-4 pb-3 shadow-[0_8px_24px_-16px_rgba(12,38,96,0.28)]">
         <div className="flex items-start justify-between">
           <div>
             <div className="text-[15px] font-bold text-zinc-900">Completed orders</div>
-            <div className="text-[12px] font-semibold text-zinc-500">Last 7 days · {total} orders</div>
+            <div className="text-[12px] font-semibold text-zinc-500">
+              {weekLabel(week, weeksBack)} · {total} orders
+            </div>
           </div>
-          <span className="flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[11.5px] font-bold text-emerald-700">
-            <TrendingUp size={14} />
-            {days[DAYS - 1].count} today
-          </span>
+          <div className="flex items-center gap-1">
+            <WeekArrows weeksBack={weeksBack} oldest={oldest} onChange={showWeek} />
+            {weeksBack === 0 && (
+              <span className="flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[11.5px] font-bold text-emerald-700">
+                <TrendingUp size={14} />
+                {days[WEEK_DAYS - 1].count} today
+              </span>
+            )}
+          </div>
         </div>
         <div className="flex-1 min-h-0 mt-3 flex items-end gap-2">
           {days.map((day, index) => {
