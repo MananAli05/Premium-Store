@@ -14,7 +14,12 @@ function adminKey() {
   return keys.default ?? Object.values(keys)[0];
 }
 
-const db = createClient(Deno.env.get("SUPABASE_URL")!, adminKey());
+const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+const db = createClient(supabaseUrl, adminKey());
+
+const cloudName = Deno.env.get("CLOUDINARY_CLOUD_NAME") ?? "";
+const cloudAuth = `Basic ${btoa(`${Deno.env.get("CLOUDINARY_API_KEY")}:${Deno.env.get("CLOUDINARY_API_SECRET")}`)}`;
+const projectFolder = new URL(supabaseUrl).hostname.split(".")[0];
 
 function storedPath(value: unknown) {
   return typeof value === "string" && value !== "" && !value.startsWith("data:") ? value : null;
@@ -26,10 +31,28 @@ async function select(table: string, columns: string, filter: (query: any) => an
   return (data ?? []) as Row[];
 }
 
+const isCloudPath = (path: string) => path.includes("/cloud-");
+
+async function removeCloudFiles(paths: string[]) {
+  const body = new URLSearchParams([["invalidate", "true"], ...paths.map((path) => ["public_ids[]", `${projectFolder}/${path}`])]);
+  const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/resources/image/authenticated`, {
+    method: "DELETE",
+    headers: { Authorization: cloudAuth },
+    body,
+  });
+  if (!response.ok) throw new Error(`cloudinary: ${response.status} ${await response.text()}`);
+}
+
 async function removeFiles(paths: string[]) {
   for (let start = 0; start < paths.length; start += BATCH) {
-    const { error } = await db.storage.from(BUCKET).remove(paths.slice(start, start + BATCH));
-    if (error) throw new Error(`storage: ${error.message}`);
+    const batch = paths.slice(start, start + BATCH);
+    const oldFiles = batch.filter((path) => !isCloudPath(path));
+    const cloudFiles = batch.filter(isCloudPath);
+    if (oldFiles.length) {
+      const { error } = await db.storage.from(BUCKET).remove(oldFiles);
+      if (error) throw new Error(`storage: ${error.message}`);
+    }
+    if (cloudFiles.length) await removeCloudFiles(cloudFiles);
   }
 }
 

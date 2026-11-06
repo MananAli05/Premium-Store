@@ -9,10 +9,10 @@ const contentSecurityPolicy = [
   // Cloudflare adds its Web Analytics beacon to every page on the live site.
   `script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com${isDev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
-  `img-src 'self' data: blob: ${supabaseUrl}`,
+  `img-src 'self' data: blob: ${supabaseUrl} https://res.cloudinary.com`,
   "font-src 'self' data:",
   // data: and blob: let the app turn a picked image into a file before uploading it.
-  `connect-src 'self' data: blob: ${supabaseUrl} ${supabaseSocket} https://cloudflareinsights.com`,
+  `connect-src 'self' data: blob: ${supabaseUrl} ${supabaseSocket} https://api.cloudinary.com https://cloudflareinsights.com`,
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
