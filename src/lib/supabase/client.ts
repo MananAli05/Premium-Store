@@ -7,10 +7,20 @@ const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? "";
 
 const clients: Partial<Record<AppRole, SupabaseClient>> = {};
 
+const REQUEST_WAIT_MS = 20_000;
+
 async function fetchAndMarkOnline(input: RequestInfo | URL, init?: RequestInit) {
-  const response = await fetch(input, init);
-  setOnline(true);
-  return response;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_WAIT_MS);
+  init?.signal?.addEventListener("abort", () => controller.abort());
+
+  try {
+    const response = await fetch(input, { ...init, signal: controller.signal });
+    setOnline(true);
+    return response;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 export function getSupabase(role: AppRole) {
   if (!clients[role]) {

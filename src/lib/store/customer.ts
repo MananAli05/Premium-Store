@@ -3,7 +3,7 @@ import { formatDuration, getEffectiveStatus } from "../availability";
 import { serverNow } from "../clock";
 import { getSupabase } from "../supabase/client";
 import { uploadScreenshot } from "../supabase/screenshots";
-import { hasOlderChat, saveProofNow } from "../supabase/sync";
+import { hasOlderChat, saveNow } from "../supabase/sync";
 import { recordUploadProblem } from "../supabase/uploadProblems";
 import type { AppState, Customer, Order, Stage, TicketKind } from "../types";
 import { validateName } from "../validation";
@@ -126,9 +126,13 @@ export function ensureCustomerProfile(user: User) {
   });
 }
 
+const openingChats = new Set<string>();
+
 export async function openChat(customerId: string) {
+  openingChats.add(customerId);
   const shown = getState().messages.some((message) => message.customerId === customerId);
   const hasHistory = shown || (await hasOlderChat(customerId)) !== false;
+  openingChats.delete(customerId);
 
   updateState((state) => {
     const customer = state.customers.find((item) => item.id === customerId);
@@ -282,7 +286,7 @@ function startBuying(state: AppState, customerId: string) {
 // A second tap while the bot is still answering the first one is ignored (no double orders or messages),
 // also while that answer is waiting for the connection.
 function botIsReplying(customerId: string) {
-  return Boolean(getState().conversations[customerId]?.typing) || hasWaitingReplies();
+  return openingChats.has(customerId) || Boolean(getState().conversations[customerId]?.typing) || hasWaitingReplies();
 }
 
 export function chooseMenuOption(customerId: string, option: MenuOption) {
@@ -450,24 +454,16 @@ export async function submitPaymentProof(customerId: string, screenshot: string,
     return "Could not upload the screenshot. Please check your internet and try again.";
   }
 
-  const refusal = await saveProofNow(order.id, screenshotPath, name);
-  if (refusal) {
-    recordUploadProblem(`Order ${order.id} not saved: ${refusal}`);
-    return PROOF_REFUSALS[refusal] ?? "Your proof could not be saved. Please check your internet and try again.";
-  }
-
-  applyRemoteChange((state) => {
+  const refusal = await saveNow((state) => {
     const current = state.orders.find((item) => item.id === order.id);
-    if (!current) return;
+    if (current) {
+      current.status = "pending_review";
+      current.screenshot = screenshotPath;
+      current.senderName = name;
+      current.submittedAt = serverNow();
+      current.rejectReason = undefined;
+    }
 
-    current.status = "pending_review";
-    current.screenshot = screenshotPath;
-    current.senderName = name;
-    current.submittedAt = serverNow();
-    current.rejectReason = undefined;
-  });
-
-  updateState((state) => {
     const customer = state.customers.find((item) => item.id === customerId);
     if (customer) customer.cancelCount = 0;
 
@@ -479,19 +475,22 @@ export async function submitPaymentProof(customerId: string, screenshot: string,
       body: `${findCustomerTitle(state, customerId)} · ${order.planName} · Rs ${order.amount.toLocaleString()}`,
       customerId,
     });
-  });
 
-  replyAsBot(customerId, (state) => {
     const status = getEffectiveStatus(state.settings);
-    const message = status === "active" ? state.settings.statusMessages.active : state.settings.statusMessages.away;
-    addMessage(state, customerId, "bot", fillPlaceholders(message, state));
+    const reply = status === "active" ? state.settings.statusMessages.active : state.settings.statusMessages.away;
+    addMessage(state, customerId, "bot", fillPlaceholders(reply, state));
     state.conversations[customerId].stage = "menu";
   });
 
+  if (refusal) {
+    recordUploadProblem(`Order ${order.id} not saved: ${refusal}`);
+    return PROOF_REFUSALS[refusal] ?? "Your proof could not be saved. Please check your internet and try again.";
+  }
   return null;
 }
 
 const SCREENSHOT_NOT_SENT = "Your screenshot could not be sent. Please try again, or remove it and send without it.";
+const NOT_SENT = "Your message could not be sent. Please check your internet and try again.";
 
 async function uploadOptional(customerId: string, screenshot?: string) {
   if (!screenshot) return { path: undefined };
@@ -561,22 +560,20 @@ export async function submitSupportIssue(customerId: string, description: string
   const screenshotPath = upload.path;
   const ticketId = createTicketNumber();
 
-  updateState((state) => {
+  const refusal = await saveNow((state) => {
     addMessage(state, customerId, "customer", description);
     if (screenshotPath) addMessage(state, customerId, "customer", "Screenshot", { kind: "image", image: screenshotPath });
 
     state.tickets.unshift({ id: ticketId, customerId, kind: "support", message: description, screenshot: screenshotPath, status: "open", createdAt: serverNow() });
     state.conversations[customerId].unreadByAdmin += 1;
     notifyAdmin(state, { kind: "support", title: "New support issue", body: `${findCustomerTitle(state, customerId)} · ${description.slice(0, 70)}`, customerId });
-  });
 
-  replyAsBot(customerId, (state) => {
     const sentWhileAway = getEffectiveStatus(state.settings) === "away";
-    const message = sentWhileAway ? state.settings.supportMessages.away : state.settings.supportMessages.active;
-    addMessage(state, customerId, "bot", fillPlaceholders(message, state).replaceAll("{ticket_id}", ticketId));
+    const reply = sentWhileAway ? state.settings.supportMessages.away : state.settings.supportMessages.active;
+    addMessage(state, customerId, "bot", fillPlaceholders(reply, state).replaceAll("{ticket_id}", ticketId));
     state.conversations[customerId].stage = "waiting_agent";
   });
-  return null;
+  return refusal ? NOT_SENT : null;
 }
 
 export async function sendIssueFollowUp(customerId: string, text: string, screenshot?: string): Promise<string | null> {
@@ -584,14 +581,14 @@ export async function sendIssueFollowUp(customerId: string, text: string, screen
   if (!upload) return SCREENSHOT_NOT_SENT;
   const screenshotPath = upload.path;
 
-  updateState((state) => {
+  const refusal = await saveNow((state) => {
     addMessage(state, customerId, "customer", text);
     if (screenshotPath) addMessage(state, customerId, "customer", "Screenshot", { kind: "image", image: screenshotPath });
     const conversation = state.conversations[customerId];
     conversation.unreadByAdmin += 1;
     conversation.stage = "waiting_agent";
   });
-  return null;
+  return refusal ? NOT_SENT : null;
 }
 
 // App issues ("support") and payment issues are separate: each kind has its own open request.
@@ -675,12 +672,12 @@ export async function sendRejectionReply(customerId: string, text: string, scree
   if (!upload) return SCREENSHOT_NOT_SENT;
   const screenshotPath = upload.path;
 
-  updateState((state) => {
+  const refusal = await saveNow((state) => {
     addMessage(state, customerId, "customer", text);
     if (screenshotPath) addMessage(state, customerId, "customer", "Screenshot", { kind: "image", image: screenshotPath });
     state.conversations[customerId].unreadByAdmin += 1;
     notifyAdmin(state, { kind: "payment", title: "Reply to a rejected payment", body: `${findCustomerTitle(state, customerId)} · ${text.slice(0, 70)}`, customerId });
   });
-  return null;
+  return refusal ? NOT_SENT : null;
 }
 

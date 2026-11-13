@@ -1,4 +1,5 @@
 import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
+import { produce } from "immer";
 import { serverNow, syncClock } from "../clock";
 import { setOnline, setSlow } from "../store/connection";
 import { keepsChat } from "../store/helpers";
@@ -7,6 +8,7 @@ import type { AppState, StoreConfig } from "../types";
 import { getSupabase, type AppRole } from "./client";
 import { configFromRow, configToRow, messageFromRow } from "./mappers";
 import { tables, type TableSync } from "./tables";
+import { recordUploadProblem } from "./uploadProblems";
 
 type Row = Record<string, unknown>;
 
@@ -109,7 +111,7 @@ type Op =
   | { kind: "delete"; table: string; key: string; ids: string[]; tries: number }
   | { kind: "config"; row: Row; tries: number };
 
-const PROOF_SAVE_ATTEMPTS = 3;
+const SAVE_NOW_ATTEMPTS = 3;
 
 let outbox: Op[] = [];
 let outboxKey = "";
@@ -175,23 +177,20 @@ function canRetry({ error, status }: WriteResult) {
   return error.code === "PGRST301" || error.code === "PGRST303";
 }
 
-async function runOp(client: SupabaseClient, op: Op): Promise<WriteResult> {
-  if (op.kind === "insert") {
-    let rows = op.rows;
-    // After a failed attempt the rows may have arrived anyway, so only the missing ones are sent again.
-    if (op.tries > 0) {
-      const ids = rows.map((row) => row[op.key]);
-      const { data, error, status } = await client.from(op.table).select(op.key).in(op.key, ids);
-      if (error) return { error, status };
-      const saved = new Set((data ?? []).map((row) => String((row as unknown as Row)[op.key])));
-      rows = rows.filter((row) => !saved.has(String(row[op.key])));
-      if (rows.length === 0) return { error: null, status: 200 };
-    }
-    return await client.from(op.table).insert(rows);
-  }
-  if (op.kind === "update") return await client.from(op.table).update(op.row).eq(op.key, op.row[op.key]);
-  if (op.kind === "delete") return await client.from(op.table).delete().in(op.key, op.ids);
-  return await client.from("store_config").upsert(op.row);
+function nextBatch() {
+  if (outbox[0].kind === "config") return outbox.slice(0, 1);
+  const end = outbox.findIndex((op) => op.kind === "config");
+  return outbox.slice(0, end === -1 ? outbox.length : end);
+}
+
+async function sendBatch(client: SupabaseClient, batch: Op[]): Promise<WriteResult> {
+  const [first] = batch;
+  if (first.kind === "config") return await client.from("store_config").upsert(first.row);
+  return await saveOnServer(batch);
+}
+
+function botIsTyping() {
+  return Object.values(getState().conversations).some((conversation) => conversation.typing);
 }
 
 function forgetLocalWrites(op: Op) {
@@ -215,29 +214,30 @@ function flushOutbox(): Promise<void> {
 
 async function sendOutbox() {
   let refused = false;
-  while (activeRole && outbox.length) {
-    const op = outbox[0];
-    const result: WriteResult = await runOp(getActiveClient(), op).catch((error: unknown) => ({ error: { message: String(error) }, status: 0 }));
+  while (activeRole && outbox.length && !botIsTyping()) {
+    const batch = nextBatch();
+    const result: WriteResult = await sendBatch(getActiveClient(), batch).catch((error: unknown) => ({ error: { message: String(error) }, status: 0 }));
 
     if (result.error && canRetry(result)) {
       if (result.status === 0) setOnline(false);
-      op.tries += 1;
+      batch[0].tries += 1;
       saveOutbox();
-      scheduleRetry(op.tries);
+      scheduleRetry(batch[0].tries);
       return;
     }
 
     setOnline(true);
-    outbox.shift();
+    outbox.splice(0, batch.length);
     saveOutbox();
     if (result.error) {
       const message = result.error.message;
-      console.warn(`The server refused a change to ${op.kind === "config" ? "settings" : op.table}`, message);
-      forgetLocalWrites(op);
+      console.warn("The server refused a change", message);
+      batch.forEach(forgetLocalWrites);
       refused = true;
       problemListeners.forEach((listener) => listener(message));
-    } else if (op.kind === "update") {
-      refreshLocalWrite(op.table, String(op.row[op.key]));
+      recordUploadProblem(`Change refused: ${message}`);
+    } else {
+      for (const op of batch) if (op.kind === "update") refreshLocalWrite(op.table, String(op.row[op.key]));
     }
   }
 
@@ -248,27 +248,61 @@ async function sendOutbox() {
   }
 }
 
-export async function saveProofNow(orderId: string, screenshot: string, senderName: string) {
-  const client = getActiveClient();
-  for (let attempt = 1; ; attempt++) {
-    await flushOutbox();
-    const result = await client.from("orders").update({ status: "pending_review", screenshot, sender_name: senderName }).eq("id", orderId).select("id");
-    if (!result.error && result.data?.length) return null;
+function opsFrom(changes: TableChanges[]): Op[] {
+  const ops: Op[] = [];
+  for (const { table, inserted, updated, deletedIds } of changes) {
+    if (inserted.length) ops.push({ kind: "insert", table: table.name, key: table.key, rows: inserted, tries: 0 });
+    for (const row of updated) ops.push({ kind: "update", table: table.name, key: table.key, row, tries: 0 });
+    if (deletedIds.length && activeRole === "admin") ops.push({ kind: "delete", table: table.name, key: table.key, ids: deletedIds, tries: 0 });
+  }
+  return ops;
+}
 
-    const { data } = await client.from("orders").select("screenshot").eq("id", orderId).maybeSingle();
-    if (data?.screenshot === screenshot) return null;
-
-    if (attempt === PROOF_SAVE_ATTEMPTS || (result.error && !canRetry(result))) return result.error?.message ?? "The order is not on the server yet";
-    await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
+function rememberChanges(changes: TableChanges[]) {
+  localVersion += 1;
+  for (const change of changes) {
+    for (const row of change.inserted) rememberLocalWrite(change.table.name, row, change.table.key, true);
+    for (const row of change.updated) rememberLocalWrite(change.table.name, row, change.table.key, false);
   }
 }
 
-function queueChanges(changes: TableChanges[], config: StoreConfig | null) {
-  for (const { table, inserted, updated, deletedIds } of changes) {
-    if (inserted.length) outbox.push({ kind: "insert", table: table.name, key: table.key, rows: inserted, tries: 0 });
-    for (const row of updated) outbox.push({ kind: "update", table: table.name, key: table.key, row, tries: 0 });
-    if (deletedIds.length && activeRole === "admin") outbox.push({ kind: "delete", table: table.name, key: table.key, ids: deletedIds, tries: 0 });
+function changedRows(table: TableSync, before: AppState, after: AppState) {
+  const previous = new Set(table.items(before));
+  return table.items(after).filter((item) => !previous.has(item)).map((item) => table.toRow(item));
+}
+
+async function saveOnServer(ops: Op[]): Promise<WriteResult> {
+  return getActiveClient()
+    .rpc("save_changes", { ops })
+    .then(
+      ({ error, status }) => ({ error, status }),
+      (error: unknown) => ({ error: { message: String(error) }, status: 0 }),
+    );
+}
+
+export async function saveNow(change: (draft: AppState) => void): Promise<string | null> {
+  await flushOutbox();
+  const before = getState();
+  const after = produce(before, change);
+  const changes = tables.map((table) => findTableChanges(table, before, after));
+  const ops = opsFrom(changes);
+  if (ops.length === 0) return null;
+
+  for (let attempt = 1; ; attempt++) {
+    const result = await saveOnServer(ops);
+    if (!result.error) break;
+    if (attempt === SAVE_NOW_ATTEMPTS || !canRetry(result)) return result.error.message;
+    await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
   }
+
+  rememberChanges(changes);
+  applyRemoteChange((draft) => tables.forEach((table) => changedRows(table, before, after).forEach((row) => table.apply(draft, row))));
+  saveCache();
+  return null;
+}
+
+function queueChanges(changes: TableChanges[], config: StoreConfig | null) {
+  outbox.push(...opsFrom(changes));
   if (config) outbox.push({ kind: "config", row: configToRow(config), tries: 0 });
   saveOutbox();
   void flushOutbox();
@@ -276,12 +310,7 @@ function queueChanges(changes: TableChanges[], config: StoreConfig | null) {
 
 function handleLocalChange(before: AppState, after: AppState) {
   const changes = tables.map((table) => findTableChanges(table, before, after));
-  localVersion += 1;
-
-  for (const change of changes) {
-    for (const row of change.inserted) rememberLocalWrite(change.table.name, row, change.table.key, true);
-    for (const row of change.updated) rememberLocalWrite(change.table.name, row, change.table.key, false);
-  }
+  rememberChanges(changes);
 
   const configTouched = before.settings !== after.settings || before.plans !== after.plans || before.methods !== after.methods || before.faqs !== after.faqs;
   const configChanged = activeRole === "admin" && configTouched && JSON.stringify(pickConfig(before)) !== JSON.stringify(pickConfig(after));
