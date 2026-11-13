@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { uploadForm } from "@/lib/server/cloudinary";
+import { cloudinaryReady, uploadForm } from "@/lib/server/cloudinary";
 import { canUse, findRequester } from "@/lib/server/requester";
 
 export async function POST(request: Request) {
+  if (!cloudinaryReady()) return new Response("Cloudinary is not set up.", { status: 404 });
+
   const requester = await findRequester(request);
   if (!requester) return new Response("Please sign in again.", { status: 401 });
 

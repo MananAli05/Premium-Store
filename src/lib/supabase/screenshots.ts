@@ -1,3 +1,4 @@
+import { createId } from "../format";
 import { getActiveClient } from "./sync";
 
 const BUCKET = "screenshots";
@@ -11,13 +12,24 @@ type UploadForm = { path: string; url: string; fields: Record<string, string> };
 
 const isCloudPath = (path: string) => path.includes("/cloud-");
 
-async function callServer(route: string, body: unknown) {
+async function postToServer(route: string, body: unknown) {
   const { data } = await getActiveClient().auth.getSession();
-  const response = await fetch(`/api/screenshots/${route}`, {
+  return fetch(`/api/screenshots/${route}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${data.session?.access_token ?? ""}` },
     body: JSON.stringify(body),
   });
+}
+
+async function callServer(route: string, body: unknown) {
+  const response = await postToServer(route, body);
+  if (!response.ok) throw new Error((await response.text()) || `Server error ${response.status}`);
+  return response.json();
+}
+
+async function requestUploadForm(customerId: string): Promise<UploadForm | null> {
+  const response = await postToServer("upload", { customerId });
+  if (response.status === 404) return null;
   if (!response.ok) throw new Error((await response.text()) || `Server error ${response.status}`);
   return response.json();
 }
@@ -30,13 +42,29 @@ async function sendToCloudinary({ url, fields }: UploadForm, blob: Blob) {
   if (!response.ok) throw new Error(`Upload failed (${response.status})`);
 }
 
+async function sendToSupabase(path: string, blob: Blob) {
+  const { error } = await getActiveClient().storage.from(BUCKET).upload(path, blob, { contentType: blob.type });
+  if (error && !/already exists|duplicate/i.test(error.message)) throw new Error(error.message);
+}
+
+function extensionFor(type: string) {
+  if (type === "image/png") return "png";
+  if (type === "image/webp") return "webp";
+  return "jpg";
+}
+
 export async function uploadScreenshot(customerId: string, dataUrl: string) {
   const blob = await (await fetch(dataUrl)).blob();
-  let upload: UploadForm | undefined;
+  const supabasePath = `${customerId}/${createId()}.${extensionFor(blob.type)}`;
+  let upload: UploadForm | null | undefined;
 
   for (let attempt = 1; ; attempt++) {
     try {
-      upload ??= (await callServer("upload", { customerId })) as UploadForm;
+      if (upload === undefined) upload = await requestUploadForm(customerId);
+      if (!upload) {
+        await sendToSupabase(supabasePath, blob);
+        return supabasePath;
+      }
       await sendToCloudinary(upload, blob);
       return upload.path;
     } catch (problem) {
