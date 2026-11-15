@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ImageIcon } from "lucide-react";
-import { chromeLink, galleryAccept, isAndroid, isImageFile, isInAppBrowser, prepareImageWithStatus } from "@/lib/browser";
+import { chromeLink, galleryAccept, isAndroid, isImageFile, isInAppBrowser, isUcBrowser, prepareImageWithStatus } from "@/lib/browser";
 import { forgetPicking, rememberPicking } from "@/lib/pickingMemory";
 import { recordUploadProblem } from "@/lib/supabase/uploadProblems";
 
@@ -28,7 +28,7 @@ export default function ImagePicker({ image, onChange, label = "Choose screensho
   const [outdated, setOutdated] = useState(false);
   const [failures, setFailures] = useState(pageReloaded ? 1 : 0);
   const [filesFailed, setFilesFailed] = useState(false);
-  const [inAppBrowser] = useState(isInAppBrowser);
+  const [weakBrowser] = useState(() => isInAppBrowser() || isUcBrowser());
 
   useEffect(() => () => stopWaiting.current?.(), []);
 
@@ -104,9 +104,9 @@ export default function ImagePicker({ image, onChange, label = "Choose screensho
 
   return (
     <div>
-      {inAppBrowser && !image && (
+      {(weakBrowser || pageReloaded) && !image && (
         <div className="mb-3 rounded-xl bg-amber-50 text-amber-900 px-3 py-2.5 text-[12.5px]">
-          <p>Pictures may not work in this app&apos;s browser. Please open this page in {isAndroid() ? "Chrome" : "Safari"} and sign in there.</p>
+          <p>Pictures may not work in this browser. Please open this page in {isAndroid() ? "Chrome" : "Safari"} and sign in there.</p>
           {isAndroid() && (
             <a href={chromeLink()} className="mt-1 inline-block font-semibold underline">
               Open in Chrome

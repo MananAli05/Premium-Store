@@ -60,15 +60,12 @@ async function accessToken() {
 type Target = { orderId: string } | { ticketId: string } | null;
 
 async function send(device: string, notification: AdminNotification, target: Target, bearer: string) {
-  const data = { section: "inbox", tab: tabs[notification.kind] ?? "pending", customerId: notification.customer_id };
-  const message = target
-    ? { token: device, data: { ...data, ...target, title: notification.title, body: notification.body }, android: { priority: "high" } }
-    : {
-        token: device,
-        notification: { title: notification.title, body: notification.body },
-        data,
-        android: { priority: "high", notification: { channel_id: "admin_alerts", sound: "default" } },
-      };
+  const message = {
+    token: device,
+    notification: { title: notification.title, body: notification.body },
+    data: { section: "inbox", tab: tabs[notification.kind] ?? "pending", customerId: notification.customer_id, ...target },
+    android: { priority: "high", notification: { channel_id: "admin_alerts", sound: "default" } },
+  };
 
   const response = await fetch(`https://fcm.googleapis.com/v1/projects/${account.project_id}/messages:send`, {
     method: "POST",

@@ -27,6 +27,10 @@ export function isInAppBrowser() {
   return /; wv\)|FBAN|FBAV|FB_IAB|Instagram|WhatsApp|Snapchat|TikTok|musical_ly/i.test(navigator.userAgent);
 }
 
+export function isUcBrowser() {
+  return /UCBrowser|UCWEB|UBrowser/i.test(navigator.userAgent);
+}
+
 export function isAndroid() {
   return /android/i.test(navigator.userAgent);
 }

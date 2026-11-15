@@ -84,7 +84,7 @@ export async function requestAdminPasswordCode(email: string): Promise<string | 
   return null;
 }
 
-// Checks the emailed code and saves the new password, then signs out again so the admin logs in normally.
+// Checks the emailed code and saves the new password, then signs out every phone and browser so the admin logs in again.
 export async function resetAdminPassword(email: string, code: string, password: string): Promise<string | null> {
   const client = createTemporaryClient();
   const { error } = await client.auth.verifyOtp({ email: email.trim().toLowerCase(), token: code, type: "email" });
@@ -98,7 +98,8 @@ export async function resetAdminPassword(email: string, code: string, password: 
   }
 
   const { error: updateError } = await client.auth.updateUser({ password });
-  await client.auth.signOut();
+  if (!updateError) await client.from("admin_devices").delete().eq("user_id", data.user?.id ?? "");
+  await client.auth.signOut({ scope: updateError ? "local" : "global" });
   if (updateError?.code === "same_password") return "Your new password must be different from your current password. Please choose another one.";
   if (updateError) return "Could not save the new password. Please try again.";
   return null;

@@ -1761,3 +1761,5 @@ $$;
 
 revoke all on function public.save_changes(jsonb) from public, anon;
 grant execute on function public.save_changes(jsonb) to authenticated;
+
+alter table public.admin_devices add column if not exists device_name text;

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { WifiOff } from "lucide-react";
 import { useConnection } from "@/hooks/useConnection";
 import { forgetPicking, pickingWasInterrupted } from "@/lib/pickingMemory";
-import { markMessagesSeen, openChat } from "@/lib/store/customer";
+import { markMessagesSeen, openChat, wasAwayTooLong, welcomeBack } from "@/lib/store/customer";
 import { findOrderMethod, keepsChat } from "@/lib/store/helpers";
 import { useAppState } from "@/lib/store/state";
 import { recordUploadProblem } from "@/lib/supabase/uploadProblems";
@@ -58,6 +58,20 @@ export default function ChatScreen({ customer, onSignOut }: ChatScreenProps) {
       document.removeEventListener("visibilitychange", markSeen);
       window.removeEventListener("focus", markSeen);
     };
+  }, [customer.id]);
+
+  useEffect(() => {
+    let hiddenAt = 0;
+    const comeBack = () => {
+      if (document.visibilityState === "hidden") {
+        hiddenAt = Date.now();
+        return;
+      }
+      if (hiddenAt && wasAwayTooLong(Date.now() - hiddenAt)) welcomeBack(customer.id);
+      hiddenAt = 0;
+    };
+    document.addEventListener("visibilitychange", comeBack);
+    return () => document.removeEventListener("visibilitychange", comeBack);
   }, [customer.id]);
 
   if (!conversation) return null;

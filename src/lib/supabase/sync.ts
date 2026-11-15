@@ -1,7 +1,7 @@
 import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
 import { produce } from "immer";
 import { serverNow, syncClock } from "../clock";
-import { setOnline, setSlow } from "../store/connection";
+import { setOnline, setRefreshing, setSlow } from "../store/connection";
 import { keepsChat } from "../store/helpers";
 import { applyRemoteChange, clearState, getState, setChangeHandler } from "../store/state";
 import type { AppState, StoreConfig } from "../types";
@@ -548,6 +548,12 @@ export async function hasOlderChat(customerId: string): Promise<boolean | null> 
   return data.length > 0;
 }
 
+export async function hasAnyChat(customerId: string): Promise<boolean | null> {
+  const { data, error } = await getActiveClient().from("messages").select("id").eq("customer_id", customerId).limit(1);
+  if (error || !data) return null;
+  return data.length > 0;
+}
+
 export async function loadOlderChat(customerId: string) {
   const { data, error } = await getActiveClient().from("messages").select("*").eq("customer_id", customerId).lt("created_at", chatShownFrom()).order("created_at");
   if (error || !data || !activeRole) return false;
@@ -717,13 +723,22 @@ function looksComplete({ results }: Awaited<ReturnType<typeof fetchEverything>>)
   return customers.length > 0 || getState().customers.length === 0;
 }
 
+async function refreshAfterReturn() {
+  setRefreshing(true);
+  try {
+    await catchUp();
+  } finally {
+    setRefreshing(false);
+  }
+}
+
 function handleVisibility() {
   if (document.visibilityState === "hidden") {
     hiddenSince = Date.now();
     flushCache();
     return;
   }
-  if (hiddenSince && Date.now() - hiddenSince > CATCH_UP_AFTER_HIDDEN_MS) void catchUp();
+  if (hiddenSince && Date.now() - hiddenSince > CATCH_UP_AFTER_HIDDEN_MS) void refreshAfterReturn();
   hiddenSince = 0;
 }
 

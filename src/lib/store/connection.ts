@@ -44,6 +44,18 @@ export function whenOnline(run: () => void) {
   runWaiting();
 }
 
+let refreshing = false;
+
+export function setRefreshing(value: boolean) {
+  if (refreshing === value) return;
+  refreshing = value;
+  notify();
+}
+
+export function isRefreshing() {
+  return refreshing;
+}
+
 // Requests are answered, but slowly.
 export function setSlow(value: boolean) {
   if (slow === value) return;

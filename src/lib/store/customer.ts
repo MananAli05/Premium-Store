@@ -3,11 +3,11 @@ import { formatDuration, getEffectiveStatus } from "../availability";
 import { serverNow } from "../clock";
 import { getSupabase } from "../supabase/client";
 import { uploadScreenshot } from "../supabase/screenshots";
-import { hasOlderChat, saveNow } from "../supabase/sync";
+import { hasAnyChat, saveNow } from "../supabase/sync";
 import { recordUploadProblem } from "../supabase/uploadProblems";
 import type { AppState, Customer, Order, Stage, TicketKind } from "../types";
 import { validateName } from "../validation";
-import { hasWaitingReplies } from "./connection";
+import { hasWaitingReplies, isRefreshing } from "./connection";
 import { ADMIN_CANCEL_REASON, addMessage, botText, canStillPay, createOrderNumber, createTicketNumber, fillPlaceholders, findCustomerTitle, getActiveOrder, notifyAdmin, replyAsBot } from "./helpers";
 import { applyRemoteChange, getState, updateState } from "./state";
 
@@ -131,24 +131,37 @@ const openingChats = new Set<string>();
 export async function openChat(customerId: string) {
   openingChats.add(customerId);
   const shown = getState().messages.some((message) => message.customerId === customerId);
-  const hasHistory = shown || (await hasOlderChat(customerId)) !== false;
+  const hasHistory = shown || (await hasAnyChat(customerId)) !== false;
   openingChats.delete(customerId);
 
+  if (!hasHistory) {
+    updateState((state) => {
+      if (state.conversations[customerId]) addMessage(state, customerId, "bot", `Hi there. ${state.settings.welcome}`);
+    });
+    recordActivity(customerId);
+    return;
+  }
+
+  const customer = getState().customers.find((item) => item.id === customerId);
+  if (customer && wasAwayTooLong(serverNow() - customer.lastSeenAt)) {
+    welcomeBack(customerId);
+  } else {
+    recordActivity(customerId);
+  }
+}
+
+export function wasAwayTooLong(awayFor: number) {
+  return awayFor > getState().settings.timers.inactiveMinutes * MINUTE;
+}
+
+export function welcomeBack(customerId: string) {
   updateState((state) => {
-    const customer = state.customers.find((item) => item.id === customerId);
     const conversation = state.conversations[customerId];
-    if (!customer || !conversation) return;
-
-    if (!hasHistory) {
-      addMessage(state, customerId, "bot", `Hi there. ${state.settings.welcome}`);
-      return;
-    }
-
-    const wasAway = serverNow() - customer.lastSeenAt > state.settings.timers.inactiveMinutes * MINUTE;
-    if (wasAway && conversation.stage !== "awaiting_payment") {
-      conversation.stage = "menu";
-      addMessage(state, customerId, "bot", botText(state, "welcomeBack"));
-    }
+    if (!conversation || conversation.stage === "awaiting_payment") return;
+    conversation.stage = "menu";
+    conversation.planId = undefined;
+    conversation.methodId = undefined;
+    addMessage(state, customerId, "bot", botText(state, "welcomeBack"));
   });
   recordActivity(customerId);
 }
@@ -226,6 +239,10 @@ export function findMenuLock(state: AppState, customerId: string, target: LockTa
     const timeLeft = formatDuration(Math.ceil((pause.until - now) / MINUTE));
     return { reason: "paused", title: "Requests paused", message: `New orders and support requests are paused after several cancelled orders. Please try again in ${timeLeft}.` };
   }
+  if (target === "buy" && pause) {
+    const timeLeft = formatDuration(Math.ceil((pause.until - now) / MINUTE));
+    return { reason: "paused", title: "Orders paused", message: botText(state, "ordersPaused", { time_left: timeLeft }) };
+  }
 
   const status = getEffectiveStatus(state.settings, now);
   if (target === "support" || (status !== "offline" && status !== "away_closed")) return null;
@@ -286,7 +303,7 @@ function startBuying(state: AppState, customerId: string) {
 // A second tap while the bot is still answering the first one is ignored (no double orders or messages),
 // also while that answer is waiting for the connection.
 function botIsReplying(customerId: string) {
-  return openingChats.has(customerId) || Boolean(getState().conversations[customerId]?.typing) || hasWaitingReplies();
+  return openingChats.has(customerId) || isRefreshing() || Boolean(getState().conversations[customerId]?.typing) || hasWaitingReplies();
 }
 
 export function chooseMenuOption(customerId: string, option: MenuOption) {

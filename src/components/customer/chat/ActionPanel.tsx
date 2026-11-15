@@ -1,5 +1,7 @@
 "use client";
 
+import { Loader2 } from "lucide-react";
+import { useConnection } from "@/hooks/useConnection";
 import { useNow } from "@/hooks/useNow";
 import { findMenuLock, findOpenTicket } from "@/lib/store/customer";
 import { canStillPay, findOrderMethod, getActiveOrder } from "@/lib/store/helpers";
@@ -29,11 +31,22 @@ type ActionPanelProps = {
 };
 
 export default function ActionPanel({ customerId, conversation, onOpenSheet }: ActionPanelProps) {
+  const { refreshing } = useConnection();
+
   return (
     <div className="border-t border-[var(--line)] bg-[var(--surface)] px-4 md:px-8 pt-3 pb-4 md:pt-4 md:pb-5 rise-in max-h-[52%] overflow-y-auto">
       <div className="max-w-[860px] mx-auto">
-        <StageActions customerId={customerId} conversation={conversation} onOpenSheet={onOpenSheet} />
+        {refreshing ? <UpdatingNotice /> : <StageActions customerId={customerId} conversation={conversation} onOpenSheet={onOpenSheet} />}
       </div>
+    </div>
+  );
+}
+
+function UpdatingNotice() {
+  return (
+    <div className="flex items-center justify-center gap-2 py-3 text-[13.5px] text-[var(--muted)]">
+      <Loader2 size={16} className="animate-spin" />
+      Updating your chat…
     </div>
   );
 }
