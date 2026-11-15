@@ -1,6 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { timeoutSignal } from "@/lib/timeoutSignal";
 
 export type Signal = { bars: number; ms: number | null };
 
@@ -32,7 +33,7 @@ async function ping() {
 
   const started = performance.now();
   try {
-    await fetch(url, { headers: { apikey: key }, cache: "no-store", signal: AbortSignal.timeout(TIMEOUT_MS) });
+    await fetch(url, { headers: { apikey: key }, cache: "no-store", signal: timeoutSignal(TIMEOUT_MS) });
     const ms = Math.round(performance.now() - started);
     update({ bars: barsFor(ms), ms });
   } catch {

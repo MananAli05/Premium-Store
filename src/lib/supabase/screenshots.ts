@@ -1,4 +1,5 @@
 import { createId } from "../format";
+import { timeoutSignal } from "../timeoutSignal";
 import { getActiveClient } from "./sync";
 
 const BUCKET = "screenshots";
@@ -38,7 +39,7 @@ async function sendToCloudinary({ url, fields }: UploadForm, blob: Blob) {
   const form = new FormData();
   Object.entries(fields).forEach(([name, value]) => form.append(name, value));
   form.append("file", blob);
-  const response = await fetch(url, { method: "POST", body: form, signal: AbortSignal.timeout(UPLOAD_WAIT_MS) });
+  const response = await fetch(url, { method: "POST", body: form, signal: timeoutSignal(UPLOAD_WAIT_MS) });
   if (!response.ok) throw new Error(`Upload failed (${response.status})`);
 }
 
