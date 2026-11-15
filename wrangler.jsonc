@@ -21,6 +21,7 @@
   "vars": {
     "EMAIL_FROM": "Premium Store <no-reply@premiumstore.online>",
     "CHAT_URL": "https://premiumstore.online/",
+    "CLOUDINARY_CLOUD_NAME": "dobrtwswn",
   }
 
 }
