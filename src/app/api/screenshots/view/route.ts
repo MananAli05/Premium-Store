@@ -1,4 +1,4 @@
-import { viewUrl } from "@/lib/server/cloudinary";
+import { siteLink } from "@/lib/server/cloudinary";
 import { canUse, findRequester, readPaths } from "@/lib/server/requester";
 
 export async function POST(request: Request) {
@@ -8,6 +8,7 @@ export async function POST(request: Request) {
   const paths = await readPaths(request);
   if (!paths) return new Response("Unknown screenshots.", { status: 400 });
 
-  const urls = Object.fromEntries(paths.filter((path) => canUse(requester, path)).map((path) => [path, viewUrl(path)]));
+  const origin = new URL(request.url).origin;
+  const urls = Object.fromEntries(paths.filter((path) => canUse(requester, path)).map((path) => [path, siteLink(origin, path)]));
   return Response.json({ urls });
 }

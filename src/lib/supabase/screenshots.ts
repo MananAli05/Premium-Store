@@ -4,48 +4,58 @@ import { getActiveClient } from "./sync";
 
 const BUCKET = "screenshots";
 const URL_LIFETIME_SECONDS = 60 * 60;
-const UPLOAD_ATTEMPTS = 3;
+const UPLOAD_ATTEMPTS = 2;
 const UPLOAD_WAIT_MS = 30_000;
 const signedUrls = new Map<string, { url: string; expiresAt: number }>();
 const cloudUrls = new Map<string, Promise<string | null>>();
 
-type UploadForm = { path: string; url: string; fields: Record<string, string> };
-
 const isCloudPath = (path: string) => path.includes("/cloud-");
 
-async function postToServer(route: string, body: unknown) {
+async function authorization() {
   const { data } = await getActiveClient().auth.getSession();
-  return fetch(`/api/screenshots/${route}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${data.session?.access_token ?? ""}` },
-    body: JSON.stringify(body),
-  });
+  return `Bearer ${data.session?.access_token ?? ""}`;
 }
 
 async function callServer(route: string, body: unknown) {
-  const response = await postToServer(route, body);
+  const response = await fetch(`/api/screenshots/${route}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: await authorization() },
+    body: JSON.stringify(body),
+  });
   if (!response.ok) throw new Error((await response.text()) || `Server error ${response.status}`);
   return response.json();
 }
 
-async function requestUploadForm(customerId: string): Promise<UploadForm | null> {
-  const response = await postToServer("upload", { customerId });
+async function sendThroughSite(customerId: string, blob: Blob): Promise<string | null> {
+  const form = new FormData();
+  form.append("customerId", customerId);
+  form.append("file", blob);
+  const response = await fetch("/api/screenshots/send", {
+    method: "POST",
+    headers: { Authorization: await authorization() },
+    body: form,
+    signal: timeoutSignal(UPLOAD_WAIT_MS),
+  });
   if (response.status === 404) return null;
   if (!response.ok) throw new Error((await response.text()) || `Server error ${response.status}`);
-  return response.json();
-}
-
-async function sendToCloudinary({ url, fields }: UploadForm, blob: Blob) {
-  const form = new FormData();
-  Object.entries(fields).forEach(([name, value]) => form.append(name, value));
-  form.append("file", blob);
-  const response = await fetch(url, { method: "POST", body: form, signal: timeoutSignal(UPLOAD_WAIT_MS) });
-  if (!response.ok) throw new Error(`Upload failed (${response.status})`);
+  return (await response.json()).path;
 }
 
 async function sendToSupabase(path: string, blob: Blob) {
   const { error } = await getActiveClient().storage.from(BUCKET).upload(path, blob, { contentType: blob.type });
   if (error && !/already exists|duplicate/i.test(error.message)) throw new Error(error.message);
+}
+
+async function withRetries<T>(task: () => Promise<T>) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await task();
+    } catch (problem) {
+      if (attempt === UPLOAD_ATTEMPTS) throw problem;
+      if (problem instanceof Error && /sign in/i.test(problem.message)) await getActiveClient().auth.refreshSession();
+      await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
+    }
+  }
 }
 
 function extensionFor(type: string) {
@@ -56,24 +66,12 @@ function extensionFor(type: string) {
 
 export async function uploadScreenshot(customerId: string, dataUrl: string) {
   const blob = await (await fetch(dataUrl)).blob();
-  const supabasePath = `${customerId}/${createId()}.${extensionFor(blob.type)}`;
-  let upload: UploadForm | null | undefined;
+  const cloudPath = await withRetries(() => sendThroughSite(customerId, blob)).catch(() => null);
+  if (cloudPath) return cloudPath;
 
-  for (let attempt = 1; ; attempt++) {
-    try {
-      if (upload === undefined) upload = await requestUploadForm(customerId);
-      if (!upload) {
-        await sendToSupabase(supabasePath, blob);
-        return supabasePath;
-      }
-      await sendToCloudinary(upload, blob);
-      return upload.path;
-    } catch (problem) {
-      if (attempt === UPLOAD_ATTEMPTS) throw problem;
-      if (problem instanceof Error && /sign in/i.test(problem.message)) await getActiveClient().auth.refreshSession();
-      await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
-    }
-  }
+  const path = `${customerId}/${createId()}.${extensionFor(blob.type)}`;
+  await withRetries(() => sendToSupabase(path, blob));
+  return path;
 }
 
 function cloudUrl(path: string) {
@@ -99,7 +97,6 @@ export async function getScreenshotUrl(path: string) {
   const { data, error } = await getActiveClient().storage.from(BUCKET).createSignedUrl(path, URL_LIFETIME_SECONDS);
   if (error || !data) return null;
 
-  // Refresh a few minutes early so an open page never shows an expired link.
   signedUrls.set(path, { url: data.signedUrl, expiresAt: Date.now() + (URL_LIFETIME_SECONDS - 5 * 60) * 1000 });
   return data.signedUrl;
 }

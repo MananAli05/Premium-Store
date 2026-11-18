@@ -178,13 +178,26 @@ test("a failed upload is tried again without the customer noticing", async (t) =
   const { page, errors } = await newCustomer();
   if (!(await createOrder(page))) return t.skip("the store is not taking orders right now");
   let failures = 0;
-  await page.route("https://api.cloudinary.com/**", (route) => (route.request().method() === "POST" && failures++ < 2 ? route.abort() : route.continue()));
+  await page.route("**/api/screenshots/send", (route) => (failures++ < 1 ? route.abort() : route.continue()));
   await click(page, "Upload payment screenshot");
   await (await page.$("input[type=file]")).setInputFiles({ name: "receipt.png", mimeType: "image/png", buffer: tinyPng });
   await page.fill("input[placeholder='e.g. Usman']", "Ali Raza");
   await click(page, "Submit for verification");
   await page.waitForSelector("text=Payment proof submitted", { timeout: 15000 });
   assert.equal(failures >= 2, true);
+  assert.equal(await page.locator("text=Could not upload").count(), 0);
+  assert.deepEqual(errors, []);
+});
+
+test("a picture still goes through when our upload route is blocked", async (t) => {
+  const { page, errors } = await newCustomer();
+  if (!(await createOrder(page))) return t.skip("the store is not taking orders right now");
+  await page.route("**/api/screenshots/send", (route) => route.abort());
+  await click(page, "Upload payment screenshot");
+  await (await page.$("input[type=file]")).setInputFiles({ name: "receipt.png", mimeType: "image/png", buffer: tinyPng });
+  await page.fill("input[placeholder='e.g. Usman']", "Ali Raza");
+  await click(page, "Submit for verification");
+  await page.waitForSelector("text=Payment proof submitted", { timeout: 20000 });
   assert.equal(await page.locator("text=Could not upload").count(), 0);
   assert.deepEqual(errors, []);
 });
@@ -249,7 +262,8 @@ test("a support screenshot that cannot be sent is not dropped silently", async (
   if (await page.isVisible("text=Admin not available")) return t.skip("the store is closed right now");
   await click(page, "Other issues");
   if (!(await page.isVisible("textarea"))) return t.skip("the store is not taking requests right now");
-  await page.route("https://api.cloudinary.com/**", (route) => (route.request().method() === "POST" ? route.abort() : route.continue()));
+  await page.route("**/api/screenshots/send", (route) => route.abort());
+  await page.route("**/storage/v1/object/screenshots/**", (route) => (route.request().method() === "POST" ? route.abort() : route.continue()));
   await page.fill("textarea", "Screenshot that cannot be sent in the end-to-end test.");
   await (await page.$("input[type=file]")).setInputFiles({ name: "issue.png", mimeType: "image/png", buffer: tinyPng });
   await click(page, "Send to our team");

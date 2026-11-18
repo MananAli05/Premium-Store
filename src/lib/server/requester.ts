@@ -1,7 +1,10 @@
+import { randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? "";
+
+const cloudPathPattern = /^[\w-]+\/cloud-[\w-]+$/;
 
 export type Requester = { id: string; isAdmin: boolean };
 
@@ -24,9 +27,18 @@ export function canUse(requester: Requester, path: string) {
   return requester.isAdmin || path.startsWith(`${requester.id}/`);
 }
 
+export function isCloudPath(path: unknown): path is string {
+  return typeof path === "string" && cloudPathPattern.test(path);
+}
+
+export function newCloudPath(customerId: unknown) {
+  if (typeof customerId !== "string" || !/^[\w-]+$/.test(customerId)) return null;
+  return `${customerId}/cloud-${randomUUID()}`;
+}
+
 export async function readPaths(request: Request) {
   const { paths } = await request.json().catch(() => ({ paths: null }));
   if (!Array.isArray(paths) || paths.length === 0 || paths.length > 100) return null;
-  if (!paths.every((path) => typeof path === "string" && /^[\w-]+\/cloud-[\w-]+$/.test(path))) return null;
+  if (!paths.every(isCloudPath)) return null;
   return paths as string[];
 }

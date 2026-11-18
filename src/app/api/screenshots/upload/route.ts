@@ -1,6 +1,5 @@
-import { randomUUID } from "node:crypto";
 import { cloudinaryReady, uploadForm } from "@/lib/server/cloudinary";
-import { canUse, findRequester } from "@/lib/server/requester";
+import { canUse, findRequester, newCloudPath } from "@/lib/server/requester";
 
 export async function POST(request: Request) {
   if (!cloudinaryReady()) return new Response("Cloudinary is not set up.", { status: 404 });
@@ -9,9 +8,8 @@ export async function POST(request: Request) {
   if (!requester) return new Response("Please sign in again.", { status: 401 });
 
   const { customerId } = await request.json().catch(() => ({ customerId: "" }));
-  if (typeof customerId !== "string" || !/^[\w-]+$/.test(customerId)) return new Response("Unknown customer.", { status: 400 });
-
-  const path = `${customerId}/cloud-${randomUUID()}`;
+  const path = newCloudPath(customerId);
+  if (!path) return new Response("Unknown customer.", { status: 400 });
   if (!canUse(requester, path)) return new Response("Not allowed.", { status: 403 });
 
   return Response.json({ path, ...uploadForm(path) });
