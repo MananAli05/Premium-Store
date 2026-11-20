@@ -89,11 +89,38 @@ export async function saveWhatsApp(customerId: string, whatsapp: string): Promis
   return { error: null };
 }
 
+const PIN_RESET_WAIT = 15 * MINUTE;
+
+function readStored(key: string) {
+  try {
+    return Number(localStorage.getItem(key)) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+function store(key: string, value: number) {
+  try {
+    localStorage.setItem(key, String(value));
+  } catch {}
+}
+
+function resetWaitMessage(minutes: number) {
+  return `A reset link was already sent. Please check your inbox and spam folder, or try again in ${minutes} minute${minutes === 1 ? "" : "s"}.`;
+}
+
 export async function requestPinReset(email: string): Promise<AuthResult> {
-  const { error } = await getSupabase("customer").auth.resetPasswordForEmail(normalizeEmail(email), {
+  const address = normalizeEmail(email);
+  const key = `pin-reset-${address}`;
+  const waitLeft = readStored(key) + PIN_RESET_WAIT - Date.now();
+  if (waitLeft > 0) return { error: resetWaitMessage(Math.ceil(waitLeft / MINUTE)) };
+
+  const { error } = await getSupabase("customer").auth.resetPasswordForEmail(address, {
     redirectTo: `${window.location.origin}/reset-pin`,
   });
+  if (error?.status === 429) return { error: resetWaitMessage(15) };
   if (error) return { error: "We couldn't send the reset email right now. Please try again in a few minutes." };
+  store(key, Date.now());
   return { error: null };
 }
 
