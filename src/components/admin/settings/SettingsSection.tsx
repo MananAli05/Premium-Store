@@ -35,6 +35,7 @@ export function Field({ label, hint, children }: FieldProps) {
       <div className="text-[13px] font-medium text-zinc-700 mb-1.5">
         {label}
         {hint && <span className="text-zinc-400 font-normal"> · {hint}</span>}
+        {/pop-up/i.test(label) && <span className="ml-2 rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700">Pop-up</span>}
       </div>
       {children}
     </label>

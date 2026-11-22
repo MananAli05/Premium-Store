@@ -5,8 +5,17 @@ import { stepLines } from "@/lib/store/helpers";
 import { cleanAccountNumber, cleanDigits, cleanIban, cleanLetters, cleanLettersAndDigits, limits } from "@/lib/validation";
 import GuideStepsEditor from "../GuideStepsEditor";
 import StepsEditor from "../StepsEditor";
-import { botMessageFields, editorPage, listField, messagesPage, type Page, type PageProps, type TextField } from "./pages";
+import { botMessageFields, editorPage, listField, menuLockField, messagesPage, type Page, type PageProps, type TextField } from "./pages";
 import { appInput, Group, InputField, Row, Switch, SwitchRow } from "./ui";
+
+const paymentLockHint = "Shown above the menu and in the pop-up while the payment waits for you.";
+
+const paymentLockFields: TextField[] = [
+  menuLockField("pendingTitle", "Waiting for approval · title", paymentLockHint),
+  menuLockField("pending", "Waiting for approval · message", paymentLockHint),
+  menuLockField("rejectedTitle", "Payment rejected · title", paymentLockHint),
+  menuLockField("rejected", "Payment rejected · message", paymentLockHint),
+];
 
 const subtitle = "Plans & payments";
 
@@ -223,6 +232,7 @@ export default function PaymentsSection({ draft, updateDraft, open }: PageProps)
       </Group>
 
       <Group title="Rules and messages">
+        <Row title="Closed menu · payment" sub="While a payment waits for you" count={paymentLockFields.length} onClick={() => open(messagesPage("Closed menu · payment", paymentLockFields, subtitle))} />
         <Row title="Rejecting a payment" sub="Message, reasons, waiting message" count={3} onClick={() => open(messagesPage("Rejecting a payment", rejectFields, subtitle))} />
         <Row title="Terms & conditions" sub="Shown before every order" count={draft.settings.terms.filter((term) => term.trim()).length} onClick={() => open(editorPage(terms, subtitle))} />
         <Row title="Buying messages" sub="Choose a plan, a method, order created" count={4} onClick={() => open(messagesPage("Buying messages", botMessageFields("Buying"), subtitle))} />

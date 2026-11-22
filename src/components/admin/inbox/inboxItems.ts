@@ -1,5 +1,5 @@
 import { formatMoney, timeAgo } from "@/lib/format";
-import { canStillPay, customerNumberLabel, customerTitle, findCustomerTitle } from "@/lib/store/helpers";
+import { ADMIN_CANCEL_REASON, canStillPay, customerNumberLabel, customerTitle, findCustomerTitle } from "@/lib/store/helpers";
 import { customerMessages, lastCustomerMessageAt } from "@/lib/store/messageIndex";
 import type { AppState, Conversation, InboxTab, Message, Order, OrderStatus, Ticket } from "@/lib/types";
 
@@ -144,7 +144,7 @@ function cancelledItems(state: AppState): InboxItem[] {
     .sort((a, b) => cancelledAt(b) - cancelledAt(a))
     .map((order) =>
       orderItem(state, order, cancelledAt(order), `${order.planName} · ${formatMoney(order.amount)}`, {
-        label: sinceLabel(cancelledLabels[order.status] ?? "Cancelled", cancelledAt(order)),
+        label: sinceLabel(order.rejectReason === ADMIN_CANCEL_REASON ? ADMIN_CANCEL_REASON : (cancelledLabels[order.status] ?? "Cancelled"), cancelledAt(order)),
         tone: "gray",
       })
     );

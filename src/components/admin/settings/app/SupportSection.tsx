@@ -4,8 +4,15 @@ import { useState } from "react";
 import { ChevronDown, Trash2 } from "lucide-react";
 import { classNames, createId } from "@/lib/format";
 import { cleanLetters, limits } from "@/lib/validation";
-import { botMessageFields, messagesPage, type Page, type PageProps, type TextField } from "./pages";
+import { botMessageFields, menuLockField, messagesPage, type Page, type PageProps, type TextField } from "./pages";
 import { appInput, Group, InputField, Row, SwitchRow } from "./ui";
+
+const requestLockHint = "Shown above the menu and in the pop-up while a request waits for you.";
+
+const requestLockFields: TextField[] = [
+  menuLockField("issueTitle", "Request open · title", requestLockHint),
+  menuLockField("issue", "Request open · message", requestLockHint),
+];
 
 const subtitle = "Support";
 
@@ -76,6 +83,7 @@ export default function SupportSection({ draft, updateDraft, open }: PageProps) 
           onChange={(value) => updateDraft((next) => (next.settings.support.issueScreenshotRequired = value))}
         />
         <Row title="Support messages" sub="Open, other issues, resolved, closed" count={5} onClick={() => open(messagesPage("Support messages", botMessageFields("Support"), subtitle))} />
+        <Row title="Closed menu · support" sub="While a request waits for you" count={requestLockFields.length} onClick={() => open(messagesPage("Closed menu · support", requestLockFields, subtitle))} />
       </Group>
 
       <Group title={`FAQs · ${draft.faqs.length}`} action={{ label: "+ Add", onClick: addQuestion }}>

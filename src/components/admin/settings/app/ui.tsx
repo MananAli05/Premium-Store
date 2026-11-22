@@ -64,6 +64,15 @@ export function Row({ title, sub, preview = false, dot, value, count, end, onCli
   );
 }
 
+export function PopupTag() {
+  return (
+    <span className="flex shrink-0 items-center gap-1.5">
+      <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[10.5px] font-bold text-sky-700">Pop-up</span>
+      <ChevronRight size={16} className="text-zinc-300" />
+    </span>
+  );
+}
+
 export function Switch({ on, onChange, label }: { on: boolean; onChange: (value: boolean) => void; label: string }) {
   return (
     <button

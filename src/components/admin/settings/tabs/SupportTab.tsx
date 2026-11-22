@@ -3,7 +3,7 @@ import Toggle from "../../ui/Toggle";
 import { inputClass, textareaClass } from "../../ui/styles";
 import type { SettingsTabProps } from "../settingsTabs";
 import { Field, SettingsSection } from "../SettingsSection";
-import { BotMessageSections } from "../MessageSections";
+import { BotMessageSections, MenuLockSection } from "../MessageSections";
 import FaqsSection from "./FaqsSection";
 
 export default function SupportTab({ draft, updateDraft }: SettingsTabProps) {
@@ -46,6 +46,7 @@ export default function SupportTab({ draft, updateDraft }: SettingsTabProps) {
       </SettingsSection>
 
       <BotMessageSections tab="support" draft={draft} updateDraft={updateDraft} />
+      <MenuLockSection part="support" draft={draft} updateDraft={updateDraft} />
 
       <FaqsSection draft={draft} updateDraft={updateDraft} />
     </>

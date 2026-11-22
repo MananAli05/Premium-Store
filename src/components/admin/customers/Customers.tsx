@@ -6,6 +6,7 @@ import { useNow } from "@/hooks/useNow";
 import { timeAgo } from "@/lib/format";
 import { customerNumberLabel } from "@/lib/store/helpers";
 import { useAppState } from "@/lib/store/state";
+import type { Customer } from "@/lib/types";
 import type { Navigate } from "../navigation";
 import Badge from "../ui/Badge";
 import { Card } from "../ui/Card";
@@ -14,17 +15,30 @@ import WhatsAppLink from "../ui/WhatsAppLink";
 import BlockCustomerButton from "./BlockCustomerButton";
 import { inputClass } from "../ui/styles";
 
+type SortKey = "newest" | "oldest" | "active";
+
+const sortLabels: Record<SortKey, string> = { newest: "New → Old", oldest: "Old → New", active: "Last active" };
+
+const joined = (customer: Customer) => customer.number ?? Number.MAX_SAFE_INTEGER;
+
+const sorters: Record<SortKey, (a: Customer, b: Customer) => number> = {
+  newest: (a, b) => joined(b) - joined(a),
+  oldest: (a, b) => joined(a) - joined(b),
+  active: (a, b) => b.lastSeenAt - a.lastSeenAt,
+};
+
 const rowGrid = "grid grid-cols-[2.6rem_minmax(0,1fr)_2.3rem_6.4rem] md:grid-cols-[6rem_13rem_8rem_7.75rem] xl:grid-cols-[7rem_14rem_9rem_7.75rem] items-center gap-x-1.5 md:gap-x-4 xl:gap-x-10";
 
 export default function Customers({ onNavigate }: { onNavigate: Navigate }) {
   const state = useAppState();
   const now = useNow(30_000);
   const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<SortKey>("newest");
   const search = query.trim().toLowerCase();
 
   const rows = state.customers
     .filter((customer) => !search || customer.email.includes(search) || customer.whatsapp?.includes(search) || customerNumberLabel(customer).includes(search))
-    .sort((a, b) => b.lastSeenAt - a.lastSeenAt);
+    .sort(sorters[sort]);
 
   return (
     <div className="h-full">
@@ -39,6 +53,15 @@ export default function Customers({ onNavigate }: { onNavigate: Navigate }) {
             </button>
             <h1 className="text-[22px] font-semibold tracking-tight">Customer list</h1>
             <p className="text-[13.5px] text-zinc-500 mt-0.5">{state.customers.length} customers. Each one sees only their own chat.</p>
+          </div>
+          <div className="flex w-full sm:w-auto items-center gap-2">
+            <select value={sort} onChange={(event) => setSort(event.target.value as SortKey)} className="h-9 rounded-full border border-zinc-200 bg-white px-3 text-[12.5px] font-semibold text-zinc-800">
+              {Object.entries(sortLabels).map(([key, label]) => (
+                <option key={key} value={key}>
+                  {label}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="relative w-full sm:w-72">
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400" />

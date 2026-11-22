@@ -4,7 +4,7 @@ import { inputClass, textareaClass } from "../../ui/styles";
 import type { SettingsTabProps } from "../settingsTabs";
 import { Field, SettingsSection } from "../SettingsSection";
 import GuideStepsEditor from "../GuideStepsEditor";
-import { BotMessageSections, TermsSection } from "../MessageSections";
+import { BotMessageSections, MenuLockSection, TermsSection } from "../MessageSections";
 import StepsEditor from "../StepsEditor";
 
 export default function PaymentsTab({ draft, updateDraft }: SettingsTabProps) {
@@ -112,6 +112,7 @@ export default function PaymentsTab({ draft, updateDraft }: SettingsTabProps) {
 
       <TermsSection draft={draft} updateDraft={updateDraft} />
       <BotMessageSections tab="payments" draft={draft} updateDraft={updateDraft} />
+      <MenuLockSection part="payment" draft={draft} updateDraft={updateDraft} />
     </>
   );
 }

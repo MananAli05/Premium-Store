@@ -6,8 +6,6 @@ function toMinutes(time: string) {
   const [hours, minutes] = time.split(":").map(Number);
   return hours * 60 + (minutes || 0);
 }
-
-// Working hours are Pakistan hours, also for a customer whose phone is set to another time zone.
 export function isWithinWorkingHours(settings: Settings, now = serverNow()) {
   const current = pakistanMinutesIntoDay(now);
   const start = toMinutes(settings.hours.start);

@@ -62,7 +62,7 @@ export default function AvailabilityTab({ draft, updateDraft }: SettingsTabProps
       </SettingsSection>
       <OrderMessagesSection draft={draft} updateDraft={updateDraft} />
       <SupportMessagesSection draft={draft} updateDraft={updateDraft} />
-      <MenuLockSection draft={draft} updateDraft={updateDraft} />
+      <MenuLockSection part="closed" draft={draft} updateDraft={updateDraft} />
     </>
   );
 }

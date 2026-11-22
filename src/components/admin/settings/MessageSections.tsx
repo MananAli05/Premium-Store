@@ -55,26 +55,40 @@ export function SupportMessagesSection({ draft, updateDraft }: SettingsTabProps)
   );
 }
 
-const menuLockFields: { key: keyof MenuLockTexts; label: string; long?: boolean }[] = [
-  { key: "pendingTitle", label: "Payment sent, waiting for approval: pop-up title" },
-  { key: "pending", label: "Payment sent, waiting for approval: message", long: true },
-  { key: "rejectedTitle", label: "Payment rejected: pop-up title" },
-  { key: "rejected", label: "Payment rejected: message", long: true },
-  { key: "issueTitle", label: "Support request open: pop-up title" },
-  { key: "issue", label: "Support request open: message", long: true },
-  { key: "closedTitle", label: "Away (not accepting) or Offline: pop-up title", long: false },
+type MenuLockPart = "payment" | "support" | "closed";
+
+const menuLockFields: { key: keyof MenuLockTexts; part: MenuLockPart; label: string; long?: boolean }[] = [
+  { key: "pendingTitle", part: "payment", label: "Payment sent, waiting for approval: pop-up title" },
+  { key: "pending", part: "payment", label: "Payment sent, waiting for approval: pop-up message", long: true },
+  { key: "rejectedTitle", part: "payment", label: "Payment rejected: pop-up title" },
+  { key: "rejected", part: "payment", label: "Payment rejected: pop-up message", long: true },
+  { key: "issueTitle", part: "support", label: "Support request open: pop-up title" },
+  { key: "issue", part: "support", label: "Support request open: pop-up message", long: true },
+  { key: "closedTitle", part: "closed", label: "Away (not accepting) or Offline: pop-up title" },
 ];
 
-export function MenuLockSection({ draft, updateDraft }: SettingsTabProps) {
+const menuLockText: Record<MenuLockPart, { title: string; description: string }> = {
+  payment: {
+    title: "Closed menu · payment",
+    description: "Buy a Subscription and Customer Support close while a payment waits for you. The message shows above the menu and in the pop-up when a closed button is tapped.",
+  },
+  support: {
+    title: "Closed menu · support",
+    description: "Buy a Subscription and Customer Support close while a support request waits for you. The message shows above the menu and in the pop-up when a closed button is tapped.",
+  },
+  closed: {
+    title: "Closed menu",
+    description: "When you are Away (not accepting) or Offline, only Buy and Other issues close, with the order and support messages above.",
+  },
+};
+
+export function MenuLockSection({ draft, updateDraft, part }: SettingsTabProps & { part: MenuLockPart }) {
   const { menuLock } = draft.settings;
 
   return (
-    <SettingsSection
-      title="Closed menu"
-      description="Buy a Subscription and Customer Support close while a payment or a support request waits for you. The message shows above the menu and in the pop-up when a closed button is tapped. When you are Away (not accepting) or Offline, only Buy and Other issues close, with the order and support messages above."
-    >
+    <SettingsSection title={menuLockText[part].title} description={menuLockText[part].description}>
       <div className="space-y-4">
-        {menuLockFields.map((field) => (
+        {menuLockFields.filter((field) => field.part === part).map((field) => (
           <Field key={field.key} label={field.label}>
             <textarea rows={field.long ? 2 : 1} maxLength={limits.longTextMax} value={menuLock[field.key]} onChange={(event) => updateDraft((next) => (next.settings.menuLock[field.key] = event.target.value))} className={textareaClass} />
           </Field>

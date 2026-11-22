@@ -17,7 +17,7 @@ export const settingsTabs = [
   { key: "availability", label: "Availability", description: "Status, working hours, closed message", Icon: Clock },
   { key: "payments", label: "Plans & payments", description: "Plans, prices, payment methods", Icon: CreditCard },
   { key: "support", label: "Support", description: "Welcome, support requests, FAQs", Icon: LifeBuoy },
-  { key: "inbox", label: "Inbox & blocking", description: "Tabs, quick replies, block reasons", Icon: Inbox },
+  { key: "inbox", label: "Inbox & blocking", description: "Quick replies, block messages and reasons", Icon: Inbox },
   { key: "timers", label: "Timers & limits", description: "Order time, cooldowns, cancels", Icon: Timer },
   { key: "appearance", label: "Appearance", description: "Chatbot colour", Icon: Palette },
 ] as const;

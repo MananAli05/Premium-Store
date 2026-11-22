@@ -4,6 +4,8 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { ImagePlus, MessageSquareText } from "lucide-react";
 import { isImageFile, prepareImage } from "@/lib/browser";
 import { classNames } from "@/lib/format";
+import { getState } from "@/lib/store/state";
+import { orderWaitingForCode, planMismatch } from "@/lib/planCheck";
 import { sendAdminImage, sendAdminMessage } from "@/lib/store/admin";
 import { useAppState } from "@/lib/store/state";
 
@@ -44,6 +46,13 @@ export default function ReplyBox({ customerId }: ReplyBoxProps) {
   const send = (message: string) => {
     const content = message.trim();
     if (!content) return;
+
+    const order = orderWaitingForCode(getState().orders, customerId);
+    const wrongPlan = order ? planMismatch(content, order.planName) : null;
+    if (wrongPlan) {
+      window.alert(wrongPlan);
+      return;
+    }
 
     sendAdminMessage(customerId, content);
     setText("");

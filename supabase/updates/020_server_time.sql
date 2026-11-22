@@ -17,7 +17,6 @@ begin
   return new;
 end;
 $$;
-
 drop trigger if exists set_server_time on public.messages;
 create trigger set_server_time
 before insert on public.messages

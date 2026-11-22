@@ -3,9 +3,9 @@
 import { classNames } from "@/lib/format";
 import { setAdminStatus } from "@/lib/store/admin";
 import { useAppState } from "@/lib/store/state";
-import type { AdminStatus, MenuLockTexts } from "@/lib/types";
-import { messagesPage, type PageProps, type TextField } from "./pages";
-import { Group, Row, SwitchRow } from "./ui";
+import type { AdminStatus } from "@/lib/types";
+import { editorPage, menuLockField, messagesPage, type PageProps, type TextField } from "./pages";
+import { Group, PopupTag, Row, SwitchRow } from "./ui";
 
 const statuses: { status: AdminStatus; label: string; description: string; dot: string }[] = [
   { status: "active", label: "Active", description: "Orders and support work normally", dot: "bg-emerald-500" },
@@ -64,22 +64,7 @@ const supportFields: TextField[] = [
   },
 ];
 
-const menuLockFields: TextField[] = (
-  [
-    ["pendingTitle", "Waiting for approval · title"],
-    ["pending", "Waiting for approval · message"],
-    ["rejectedTitle", "Payment rejected · title"],
-    ["rejected", "Payment rejected · message"],
-    ["issueTitle", "Request open · title"],
-    ["issue", "Request open · message"],
-    ["closedTitle", "Away · closed or Offline · title"],
-  ] as [keyof MenuLockTexts, string][]
-).map(([key, label]): TextField => ({
-  label,
-  hint: "Shown above the menu and in the pop-up when a closed button is tapped.",
-  get: (draft) => draft.settings.menuLock[key],
-  set: (draft, value) => (draft.settings.menuLock[key] = value),
-}));
+const closedTitle = menuLockField("closedTitle", "Closed menu · title", "Pop-up title when a closed button is tapped while you are Away · closed or Offline.");
 
 export default function AvailabilitySection({ draft, updateDraft, open }: PageProps) {
   const state = useAppState();
@@ -128,7 +113,7 @@ export default function AvailabilitySection({ draft, updateDraft, open }: PagePr
       <Group title="Messages">
         <Row title="Order messages" sub="What buyers see for each status" count={4} onClick={() => open(messagesPage("Order messages", orderFields, "Availability"))} />
         <Row title="Support messages" sub="After a request, and when closed" count={4} onClick={() => open(messagesPage("Support messages", supportFields, "Availability"))} />
-        <Row title="Closed menu" sub="While a payment or a request waits for you" count={7} onClick={() => open(messagesPage("Closed menu", menuLockFields, "Availability"))} />
+        <Row title="Closed menu title" sub="When you are Away · closed or Offline" end={<PopupTag />} onClick={() => open(editorPage(closedTitle, "Availability"))} />
       </Group>
     </>
   );

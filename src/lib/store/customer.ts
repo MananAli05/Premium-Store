@@ -90,37 +90,55 @@ export async function saveWhatsApp(customerId: string, whatsapp: string): Promis
 }
 
 const PIN_RESET_WAIT = 15 * MINUTE;
+const PIN_RESETS_PER_DAY = 3;
+const DAY = 24 * 60 * MINUTE;
 
-function readStored(key: string) {
+function readResets(key: string): number[] {
   try {
-    return Number(localStorage.getItem(key)) || 0;
+    const saved = JSON.parse(localStorage.getItem(key) ?? "[]");
+    return Array.isArray(saved) ? saved.filter((time) => typeof time === "number" && Date.now() - time < DAY) : [];
   } catch {
-    return 0;
+    return [];
   }
 }
 
-function store(key: string, value: number) {
+function saveResets(key: string, times: number[]) {
   try {
-    localStorage.setItem(key, String(value));
+    localStorage.setItem(key, JSON.stringify(times));
   } catch {}
 }
 
-function resetWaitMessage(minutes: number) {
-  return `A reset link was already sent. Please check your inbox and spam folder, or try again in ${minutes} minute${minutes === 1 ? "" : "s"}.`;
+function waitText(ms: number) {
+  const minutes = Math.ceil(ms / MINUTE);
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+  const hours = Math.ceil(minutes / 60);
+  return `${hours} hour${hours === 1 ? "" : "s"}`;
+}
+
+function resetLimitMessage(times: number[]) {
+  if (times.length >= PIN_RESETS_PER_DAY) {
+    return `You have used all ${PIN_RESETS_PER_DAY} reset emails for today. Please check your inbox and spam folder, or try again in ${waitText(times[0] + DAY - Date.now())}.`;
+  }
+  const last = times[times.length - 1];
+  if (last && Date.now() - last < PIN_RESET_WAIT) {
+    return `A reset link was already sent. Please check your inbox and spam folder, or try again in ${waitText(last + PIN_RESET_WAIT - Date.now())}.`;
+  }
+  return null;
 }
 
 export async function requestPinReset(email: string): Promise<AuthResult> {
   const address = normalizeEmail(email);
-  const key = `pin-reset-${address}`;
-  const waitLeft = readStored(key) + PIN_RESET_WAIT - Date.now();
-  if (waitLeft > 0) return { error: resetWaitMessage(Math.ceil(waitLeft / MINUTE)) };
+  const key = `pin-resets-${address}`;
+  const times = readResets(key);
+  const limit = resetLimitMessage(times);
+  if (limit) return { error: limit };
 
   const { error } = await getSupabase("customer").auth.resetPasswordForEmail(address, {
     redirectTo: `${window.location.origin}/reset-pin`,
   });
-  if (error?.status === 429) return { error: resetWaitMessage(15) };
+  if (error?.status === 429) return { error: "A reset link was already sent. Please check your inbox and spam folder, or try again in 15 minutes." };
   if (error) return { error: "We couldn't send the reset email right now. Please try again in a few minutes." };
-  store(key, Date.now());
+  saveResets(key, [...times, Date.now()]);
   return { error: null };
 }
 
@@ -216,13 +234,13 @@ export function markMessagesDelivered(customerId: string) {
 }
 
 export function markMessagesSeen(customerId: string) {
-  const hasUnseen = getState().messages.some((message) => message.customerId === customerId && message.sender === "admin" && !message.seenAt);
+  const hasUnseen = getState().messages.some((message) => message.customerId === customerId && message.sender !== "customer" && !message.seenAt);
   if (!hasUnseen) return;
 
   updateState((state) => {
     const now = serverNow();
     for (const message of state.messages) {
-      if (message.customerId === customerId && message.sender === "admin" && !message.seenAt) {
+      if (message.customerId === customerId && message.sender !== "customer" && !message.seenAt) {
         message.deliveredAt = message.deliveredAt ?? now;
         message.seenAt = now;
       }

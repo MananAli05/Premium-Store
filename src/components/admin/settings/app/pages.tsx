@@ -4,8 +4,9 @@ import { useRef } from "react";
 import { botMessageGroups, defaultBotMessages } from "@/lib/botMessages";
 import type { EditableSettings } from "@/lib/store/admin";
 import { limits } from "@/lib/validation";
+import type { MenuLockTexts } from "@/lib/types";
 import type { UpdateDraft } from "../useSettingsDraft";
-import { Group, Row } from "./ui";
+import { Group, PopupTag, Row } from "./ui";
 
 export type PageProps = {
   draft: EditableSettings;
@@ -51,6 +52,12 @@ export function editorPage(field: TextField, subtitle?: string): Page {
   return { title: "Edit message", subtitle, render: (props) => <TextEditor field={field} {...props} /> };
 }
 
+export const isPopup = (field: TextField) => /pop-up/i.test(`${field.label} ${field.hint ?? ""}`);
+
+export function menuLockField(key: keyof MenuLockTexts, label: string, hint: string): TextField {
+  return { label, hint, get: (draft) => draft.settings.menuLock[key], set: (draft, value) => (draft.settings.menuLock[key] = value) };
+}
+
 export function messagesPage(title: string, fields: TextField[], subtitle?: string): Page {
   return { title, subtitle, render: (props) => <MessageList title={title} fields={fields} {...props} /> };
 }
@@ -67,6 +74,7 @@ function MessageList({ title, fields, draft, open }: PageProps & { title: string
             title={field.label}
             sub={field.lines ? text.split("\n").filter(Boolean).join(" · ") || "Empty" : text || field.fallback || "Empty"}
             preview
+            end={isPopup(field) ? <PopupTag /> : undefined}
             onClick={() => open(editorPage(field, title))}
           />
         );
