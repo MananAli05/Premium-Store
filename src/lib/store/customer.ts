@@ -3,7 +3,7 @@ import { formatDuration, getEffectiveStatus } from "../availability";
 import { serverNow } from "../clock";
 import { getSupabase } from "../supabase/client";
 import { uploadScreenshot } from "../supabase/screenshots";
-import { hasAnyChat, saveNow } from "../supabase/sync";
+import { hasAnyChat, saveNow, stepsStuck, whenAllSaved } from "../supabase/sync";
 import { recordUploadProblem } from "../supabase/uploadProblems";
 import type { AppState, Customer, Order, Stage, TicketKind } from "../types";
 import { validateName } from "../validation";
@@ -153,6 +153,8 @@ export async function signOut() {
   await getSupabase("customer").auth.signOut();
 }
 
+const newConversation = (customerId: string, now: number) => ({ customerId, stage: "menu" as Stage, typing: false, unreadByAdmin: 0, lastMessageAt: now });
+
 export function ensureCustomerProfile(user: User) {
   const state = getState();
   const hasProfile = state.customers.some((customer) => customer.id === user.id);
@@ -166,22 +168,33 @@ export function ensureCustomerProfile(user: User) {
       draft.customers.push({ id: user.id, email: user.email ?? "", createdAt: now, lastSeenAt: now, blocked: false, cancelCount: 0, whatsapp });
     }
     if (!hasConversation) {
-      draft.conversations[user.id] = { customerId: user.id, stage: "menu", typing: false, unreadByAdmin: 0, lastMessageAt: now };
+      draft.conversations[user.id] = newConversation(user.id, now);
     }
   });
 }
 
 const openingChats = new Set<string>();
+const HISTORY_CHECKS = 3;
+
+async function hasChatHistory(customerId: string) {
+  if (getState().messages.some((message) => message.customerId === customerId)) return true;
+  for (let attempt = 1; attempt <= HISTORY_CHECKS; attempt++) {
+    const found = await hasAnyChat(customerId);
+    if (found !== null) return found;
+    await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
+  }
+  return true;
+}
 
 export async function openChat(customerId: string) {
   openingChats.add(customerId);
-  const shown = getState().messages.some((message) => message.customerId === customerId);
-  const hasHistory = shown || (await hasAnyChat(customerId)) !== false;
+  const hasHistory = await hasChatHistory(customerId);
   openingChats.delete(customerId);
 
   if (!hasHistory) {
     updateState((state) => {
-      if (state.conversations[customerId]) addMessage(state, customerId, "bot", `Hi there. ${state.settings.welcome}`);
+      state.conversations[customerId] ??= newConversation(customerId, serverNow());
+      addMessage(state, customerId, "bot", `Hi there. ${state.settings.welcome}`);
     });
     recordActivity(customerId);
     return;
@@ -348,7 +361,7 @@ function startBuying(state: AppState, customerId: string) {
 // A second tap while the bot is still answering the first one is ignored (no double orders or messages),
 // also while that answer is waiting for the connection.
 function botIsReplying(customerId: string) {
-  return openingChats.has(customerId) || isRefreshing() || Boolean(getState().conversations[customerId]?.typing) || hasWaitingReplies();
+  return openingChats.has(customerId) || isRefreshing() || stepsStuck() || Boolean(getState().conversations[customerId]?.typing) || hasWaitingReplies();
 }
 
 export function chooseMenuOption(customerId: string, option: MenuOption) {
@@ -443,9 +456,10 @@ export function createOrder(customerId: string) {
     conversation.stage = "awaiting_payment";
   });
 
-  replyAsBot(customerId, (state) => {
-    if (order) {
-      addMessage(state, customerId, "bot", botText(state, "orderCreated", { order_id: order.id, plan: order.planName }), { kind: "payment", orderId: order.id });
+  void whenAllSaved().then(() => replyAsBot(customerId, (state) => {
+    const saved = order && state.orders.find((item) => item.id === order?.id);
+    if (saved) {
+      addMessage(state, customerId, "bot", botText(state, "orderCreated", { order_id: saved.id, plan: saved.planName }), { kind: "payment", orderId: saved.id });
       return;
     }
 
@@ -455,7 +469,7 @@ export function createOrder(customerId: string) {
       addMessage(state, customerId, "bot", fillPlaceholders(state.settings.statusMessages[status], state));
       state.conversations[customerId].stage = "menu";
     }
-  });
+  }));
 }
 
 export function cancelOrder(customerId: string) {

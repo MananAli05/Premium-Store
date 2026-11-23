@@ -122,6 +122,43 @@ const problemListeners = new Set<(message: string) => void>();
 const pendingListeners = new Set<() => void>();
 let pendingVersion = 0;
 
+const STUCK_AFTER_MS = 10_000;
+let unsentSince: number | null = null;
+let stuckTimer: ReturnType<typeof setTimeout> | undefined;
+const savedWaiters: (() => void)[] = [];
+
+function notifyPending() {
+  pendingVersion += 1;
+  pendingListeners.forEach((listener) => listener());
+}
+
+function trackUnsent() {
+  if (outbox.length === 0) {
+    unsentSince = null;
+    clearTimeout(stuckTimer);
+    savedWaiters.splice(0).forEach((done) => done());
+    return;
+  }
+  if (unsentSince !== null) return;
+  unsentSince = Date.now();
+  stuckTimer = setTimeout(notifyPending, STUCK_AFTER_MS);
+}
+
+export function hasUnsentSteps() {
+  return outbox.length > 0;
+}
+
+export function stepsStuck() {
+  return unsentSince !== null && Date.now() - unsentSince >= STUCK_AFTER_MS;
+}
+
+export function whenAllSaved() {
+  return new Promise<void>((resolve) => {
+    if (outbox.length === 0) resolve();
+    else savedWaiters.push(resolve);
+  });
+}
+
 // Messages written on this device that the server does not have yet (shown with a clock).
 export function pendingMessageIds() {
   const ids = new Set<string>();
@@ -149,8 +186,8 @@ export function onSyncProblem(listener: (message: string) => void) {
 }
 
 function saveOutbox() {
-  pendingVersion += 1;
-  pendingListeners.forEach((listener) => listener());
+  trackUnsent();
+  notifyPending();
   try {
     if (outbox.length) localStorage.setItem(outboxKey, JSON.stringify(outbox));
     else localStorage.removeItem(outboxKey);
@@ -166,6 +203,7 @@ function loadOutbox(key: string) {
   } catch {
     outbox = [];
   }
+  trackUnsent();
 }
 
 type WriteResult = { error: { message: string; code?: string } | null; status: number };
@@ -778,6 +816,7 @@ export async function stopSync() {
   clearTimeout(loadRetryTimer);
   // Unsent changes stay saved on the device for this account and go out at the next sign-in.
   outbox = [];
+  trackUnsent();
   // Signing out removes the copy of the chat kept on the device.
   clearTimeout(cacheTimer);
   cacheTimer = undefined;

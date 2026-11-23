@@ -3,6 +3,7 @@
 import { Loader2 } from "lucide-react";
 import { useConnection } from "@/hooks/useConnection";
 import { useNow } from "@/hooks/useNow";
+import { useStepsStuck } from "@/hooks/useStepsStuck";
 import { findMenuLock, findOpenTicket } from "@/lib/store/customer";
 import { canStillPay, findOrderMethod, getActiveOrder } from "@/lib/store/helpers";
 import { getState } from "@/lib/store/state";
@@ -32,11 +33,12 @@ type ActionPanelProps = {
 
 export default function ActionPanel({ customerId, conversation, onOpenSheet }: ActionPanelProps) {
   const { refreshing } = useConnection();
+  const stuck = useStepsStuck();
 
   return (
     <div className="border-t border-[var(--line)] bg-[var(--surface)] px-4 md:px-8 pt-3 pb-4 md:pt-4 md:pb-5 rise-in max-h-[52%] overflow-y-auto">
       <div className="max-w-[860px] mx-auto">
-        {refreshing ? <UpdatingNotice /> : <StageActions customerId={customerId} conversation={conversation} onOpenSheet={onOpenSheet} />}
+        {refreshing ? <UpdatingNotice /> : stuck ? <WaitingForInternet /> : <StageActions customerId={customerId} conversation={conversation} onOpenSheet={onOpenSheet} />}
       </div>
     </div>
   );
@@ -51,6 +53,24 @@ function UpdatingNotice() {
   );
 }
 
+function WaitingForInternet() {
+  return (
+    <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13.5px] text-amber-900">
+      <span className="block font-semibold">Waiting for internet…</span>
+      Don&apos;t pay yet. Your steps are saved.
+    </div>
+  );
+}
+
+function CreatingOrderNotice() {
+  return (
+    <div className="flex items-center justify-center gap-2 py-3 text-[13.5px] text-[var(--muted)]">
+      <Loader2 size={16} className="animate-spin" />
+      Creating your order…
+    </div>
+  );
+}
+
 function AwaitingPaymentActions({ customerId, onOpenSheet }: Omit<ActionPanelProps, "conversation">) {
   const now = useNow(1000);
   const order = getActiveOrder(getState(), customerId);
@@ -58,6 +78,7 @@ function AwaitingPaymentActions({ customerId, onOpenSheet }: Omit<ActionPanelPro
   if (order?.status === "awaiting_payment" && !canStillPay(order, now)) return <ClosingOrderNotice />;
   if (!order && getState().conversations[customerId]?.activeOrderId) return <MissingOrderNotice customerId={customerId} />;
   if (!order || !canStillPay(order, now)) return <BackToMenuButton customerId={customerId} />;
+  if (!getState().messages.some((message) => message.kind === "payment" && message.orderId === order.id)) return <CreatingOrderNotice />;
   return <PaymentActions customerId={customerId} method={findOrderMethod(getState(), customerId)} onOpenSheet={onOpenSheet} />;
 }
 
