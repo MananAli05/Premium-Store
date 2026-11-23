@@ -50,12 +50,13 @@ export function chatDayLabel(time: number, now: number) {
   return formatDate(time);
 }
 
-// The time beside a chat in the inbox list: 7:50 PM today, then Yesterday, then the date.
+// The time beside a chat in the inbox list: 7:50 PM today, then Yesterday, 7:50 PM, then 21 Nov, 7:50 PM, and only the date in an earlier year.
 export function chatListTime(time: number, now: number) {
   const daysAgo = pakistanDay(now) - pakistanDay(time);
   if (daysAgo <= 0) return formatTime(time);
-  if (daysAgo === 1) return "Yesterday";
-  return yearFormat.format(time) === yearFormat.format(now) ? shortDateFormat.format(time) : formatDate(time);
+  if (daysAgo === 1) return `Yesterday, ${formatTime(time)}`;
+  if (yearFormat.format(time) !== yearFormat.format(now)) return formatDate(time);
+  return `${shortDateFormat.format(time)}, ${formatTime(time)}`;
 }
 
 export function timeAgo(time: number, now = serverNow()) {
