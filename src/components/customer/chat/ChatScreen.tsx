@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useAutoUpdate } from "@/hooks/useAutoUpdate";
 import { WifiOff } from "lucide-react";
 import { useConnection } from "@/hooks/useConnection";
 import { forgetPicking, pickingWasInterrupted } from "@/lib/pickingMemory";
@@ -28,6 +29,7 @@ export default function ChatScreen({ customer, onSignOut }: ChatScreenProps) {
   const state = useAppState();
   const [pageReloaded] = useState(() => pickingWasInterrupted(customer.id));
   const [sheet, setSheet] = useState<OpenSheet>(pageReloaded ? "proof" : null);
+  useAutoUpdate(sheet === null);
   const conversation = state.conversations[customer.id];
   const messages = state.messages.filter((message) => message.customerId === customer.id);
   const orderMethod = findOrderMethod(state, customer.id);

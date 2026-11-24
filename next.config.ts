@@ -3,6 +3,7 @@ import type { NextConfig } from "next";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseSocket = supabaseUrl.replace(/^https:/, "wss:");
 const isDev = process.env.NODE_ENV !== "production";
+const buildId = process.env.WORKERS_CI_COMMIT_SHA ?? process.env.VERCEL_GIT_COMMIT_SHA ?? "";
 
 const contentSecurityPolicy = [
   "default-src 'self'",
@@ -32,6 +33,7 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   devIndicators: false,
+  env: { NEXT_PUBLIC_BUILD_ID: buildId },
   poweredByHeader: false,
   turbopack: {
     rules: {
