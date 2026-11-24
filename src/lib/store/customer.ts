@@ -5,10 +5,11 @@ import { getSupabase } from "../supabase/client";
 import { uploadScreenshot } from "../supabase/screenshots";
 import { hasAnyChat, saveNow, stepsStuck, whenAllSaved } from "../supabase/sync";
 import { recordUploadProblem } from "../supabase/uploadProblems";
-import type { AppState, Customer, Order, Stage, TicketKind } from "../types";
+import type { AppState, Conversation, Customer, Message, Order, Stage, TicketKind } from "../types";
 import { validateName } from "../validation";
 import { hasWaitingReplies, isRefreshing } from "./connection";
 import { ADMIN_CANCEL_REASON, addMessage, botText, canStillPay, createOrderNumber, createTicketNumber, fillPlaceholders, findCustomerTitle, getActiveOrder, notifyAdmin, replyAsBot } from "./helpers";
+import { customerMessages } from "./messageIndex";
 import { applyRemoteChange, getState, updateState } from "./state";
 
 const MINUTE = 60_000;
@@ -153,6 +154,19 @@ export async function signOut() {
   await getSupabase("customer").auth.signOut();
 }
 
+const UNFINISHED_STEPS: Stage[] = ["choose_plan", "choose_method", "terms", "support"];
+
+function startFromMenu(conversation: Conversation) {
+  conversation.stage = "menu";
+  conversation.planId = undefined;
+  conversation.methodId = undefined;
+}
+
+function lastMessageText(state: AppState, customerId: string) {
+  const messages = customerMessages(state, customerId);
+  return messages.reduce<Message | undefined>((latest, message) => (!latest || message.createdAt > latest.createdAt ? message : latest), undefined)?.text;
+}
+
 const newConversation = (customerId: string, now: number) => ({ customerId, stage: "menu" as Stage, typing: false, unreadByAdmin: 0, lastMessageAt: now });
 
 export function ensureCustomerProfile(user: User) {
@@ -193,7 +207,8 @@ export async function openChat(customerId: string) {
 
   if (!hasHistory) {
     updateState((state) => {
-      state.conversations[customerId] ??= newConversation(customerId, serverNow());
+      const conversation = (state.conversations[customerId] ??= newConversation(customerId, serverNow()));
+      if (UNFINISHED_STEPS.includes(conversation.stage)) startFromMenu(conversation);
       addMessage(state, customerId, "bot", `Hi there. ${state.settings.welcome}`);
     });
     recordActivity(customerId);
@@ -216,10 +231,9 @@ export function welcomeBack(customerId: string) {
   updateState((state) => {
     const conversation = state.conversations[customerId];
     if (!conversation || conversation.stage === "awaiting_payment") return;
-    conversation.stage = "menu";
-    conversation.planId = undefined;
-    conversation.methodId = undefined;
-    addMessage(state, customerId, "bot", botText(state, "welcomeBack"));
+    startFromMenu(conversation);
+    const text = botText(state, "welcomeBack");
+    if (lastMessageText(state, customerId) !== text) addMessage(state, customerId, "bot", text);
   });
   recordActivity(customerId);
 }
