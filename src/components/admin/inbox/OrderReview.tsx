@@ -29,7 +29,8 @@ type OrderReviewProps = {
 
 export default function OrderReview({ order, customerEmail }: OrderReviewProps) {
   const [dialog, setDialog] = useState<"approve" | "reject" | "cancel" | "unused" | null>(null);
-  const badge = orderStatusBadge[order.status];
+  const removed = Boolean(order.codeReleased);
+  const badge = removed ? { label: "Code removed", tone: "gray" as const } : orderStatusBadge[order.status];
   const isPending = order.status === "pending_review" || order.status === "rejected";
   const state = useAppState();
   const codeMessage = state.messages.find((message) => message.orderId === order.id && message.kind === "code");
@@ -65,7 +66,7 @@ export default function OrderReview({ order, customerEmail }: OrderReviewProps) 
         ) : (
           <Row label="Submitted" value={order.submittedAt ? formatDateTime(order.submittedAt) : "Not sent yet"} />
         )}
-        {order.code && <Row label="Code" value={order.code} strong />}
+        {order.code && !removed && <Row label="Code" value={order.code} strong />}
       </dl>
 
       {order.status === "rejected" && (
@@ -115,7 +116,7 @@ export default function OrderReview({ order, customerEmail }: OrderReviewProps) 
         </div>
       )}
 
-      {order.status === "completed" && order.code && (
+      {order.status === "completed" && order.code && !removed && (
         <div className="px-4 pb-4">
           {order.codeUnused ? (
             <button onClick={() => setDialog("unused")} className={`w-full ${actionButton.unused}`}>

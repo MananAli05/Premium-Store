@@ -59,14 +59,15 @@ export default function AppInboxCard({ tab, item, now, onOpenChat }: AppInboxCar
   const order = state.orders.find((entry) => entry.id === item.key);
   const ticket = tab === "issues" ? state.tickets.find((entry) => entry.id === item.key) : undefined;
 
-  const showsCode = (tab === "completed" || tab === "unused") && Boolean(order?.code);
+  const removed = Boolean(order?.codeReleased);
+  const showsCode = (tab === "completed" || tab === "unused") && Boolean(order?.code) && !removed;
   const screenshot = showsCode ? undefined : (order?.screenshot ?? ticket?.screenshot);
   const badgeTone = tab === "unused" ? "violet" : item.badge?.tone;
   const customerName = customer ? customerTitle(customer) : "this customer";
 
   let line = "";
   if (tab === "pending" && order) line = [order.senderName, order.planName, formatMoney(order.amount), order.methodName].filter(Boolean).join(" · ");
-  if ((tab === "completed" || tab === "unused") && order) line = order.code ? order.planName : `${order.planName} · Code not sent yet`;
+  if ((tab === "completed" || tab === "unused") && order) line = removed ? `${order.planName} · Code removed` : order.code ? order.planName : `${order.planName} · Code not sent yet`;
 
   let note: { text: string; tone: string } | null = null;
   if (order?.status === "rejected") note = { text: `Rejected: ${order.rejectReason}`, tone: "text-red-700" };
@@ -128,7 +129,7 @@ export default function AppInboxCard({ tab, item, now, onOpenChat }: AppInboxCar
                 <button onClick={() => setDialog("reply")} className={buttons.soft}>Reply</button>
               </>
             )}
-            {tab === "completed" && order && (order.code ? (
+            {tab === "completed" && order && !removed && (order.code ? (
               <button onClick={() => setDialog("unused")} className={buttons.soft}>Mark as unused</button>
             ) : (
               <button onClick={() => onOpenChat(item.customerId)} className={buttons.soft}>Open chat to send code</button>
