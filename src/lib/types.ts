@@ -209,6 +209,7 @@ export type Order = {
   rejectReason?: string;
   code?: string;
   codeUnused: boolean;
+  codeReleased?: boolean;
 };
 
 export type TicketKind = "support" | "payment";

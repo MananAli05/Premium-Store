@@ -223,8 +223,10 @@ export async function openChat(customerId: string) {
   }
 }
 
+const WELCOME_BACK_AFTER = 6 * 60 * MINUTE;
+
 export function wasAwayTooLong(awayFor: number) {
-  return awayFor > getState().settings.timers.inactiveMinutes * MINUTE;
+  return awayFor > WELCOME_BACK_AFTER;
 }
 
 export function welcomeBack(customerId: string) {
@@ -395,7 +397,7 @@ export function chooseMenuOption(customerId: string, option: MenuOption) {
 }
 
 export function choosePlan(customerId: string, planId: string) {
-  if (botIsReplying(customerId)) return;
+  if (botIsReplying(customerId) || getState().conversations[customerId]?.stage !== "choose_plan") return;
   const plan = getState().plans.find((item) => item.id === planId);
   if (!plan) return;
 
@@ -411,7 +413,7 @@ export function choosePlan(customerId: string, planId: string) {
 }
 
 export function chooseMethod(customerId: string, methodId: string) {
-  if (botIsReplying(customerId)) return;
+  if (botIsReplying(customerId) || getState().conversations[customerId]?.stage !== "choose_method") return;
   const method = getState().methods.find((item) => item.id === methodId);
   if (!method) return;
 
@@ -736,14 +738,11 @@ export function backToMenu(customerId: string) {
   if (botIsReplying(customerId)) return;
   updateState((state) => {
     addMessage(state, customerId, "customer", "Main menu");
+    startFromMenu(state.conversations[customerId]);
   });
 
   replyAsBot(customerId, (state) => {
     addMessage(state, customerId, "bot", botText(state, "menuPrompt"));
-    const conversation = state.conversations[customerId];
-    conversation.stage = "menu";
-    conversation.planId = undefined;
-    conversation.methodId = undefined;
   });
 }
 

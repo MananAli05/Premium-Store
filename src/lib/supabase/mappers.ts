@@ -93,6 +93,7 @@ export function orderFromRow(row: Row): Order {
     rejectReason: optional<string>(row.reject_reason),
     code: optional<string>(row.code),
     codeUnused: Boolean(row.code_unused),
+    codeReleased: Boolean(row.code_released),
   };
 }
 

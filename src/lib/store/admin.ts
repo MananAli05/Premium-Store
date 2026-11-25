@@ -194,14 +194,15 @@ export function findCodeAlreadySent(text: string) {
   const codes = codesIn(text);
   if (codes.length === 0) return null;
 
-  const earlierOrder = state.orders.find((order) => order.code && codes.includes(order.code.toLowerCase()));
+  const released = new Set(state.orders.filter((order) => order.codeReleased && order.code).map((order) => order.code!.toLowerCase()));
+  const earlierOrder = state.orders.find((order) => order.code && !order.codeReleased && codes.includes(order.code.toLowerCase()));
   if (earlierOrder) {
     return { code: earlierOrder.code ?? "", customerEmail: findCustomerEmail(state, earlierOrder.customerId), sentAt: earlierOrder.reviewedAt ?? earlierOrder.createdAt };
   }
 
   for (const message of state.messages) {
     if (message.sender !== "admin" || message.kind === "deleted") continue;
-    const repeated = codesIn(message.text).find((code) => codes.includes(code));
+    const repeated = codesIn(message.text).find((code) => codes.includes(code) && !released.has(code));
     if (repeated) return { code: repeated.toUpperCase(), customerEmail: findCustomerEmail(state, message.customerId), sentAt: message.createdAt };
   }
   return null;
