@@ -11,7 +11,7 @@ const tinyPng = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUl
 let browser;
 
 before(async () => {
-  browser = await chromium.launch({ channel: "msedge" });
+  browser = await chromium.launch({ channel: process.env.BROWSER_CHANNEL ?? "msedge" });
 });
 
 after(async () => {
@@ -230,7 +230,8 @@ test("an order is made even when the customer leaves for the payment app straigh
     Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
     document.dispatchEvent(new Event("visibilitychange"));
   });
-  assert.equal(await page.locator("text=/^Order PS-/i").count(), 1, "the order is there before the page comes back");
+  await page.waitForSelector("text=/^Order PS-/i", { timeout: 15000 });
+  assert.equal(await page.locator("text=/^Order PS-/i").count(), 1, "the order is made while the page is away");
   await page.evaluate(() => {
     Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
     document.dispatchEvent(new Event("visibilitychange"));
@@ -453,4 +454,113 @@ test("a very old Chrome gets the update screen with no way to close it", async (
   assert.equal(await page.isVisible("#old-browser-close"), false);
   const box = await page.locator("#old-browser-notice").boundingBox();
   assert.equal(box.height, 860);
+});
+
+const welcomes = (page) => page.locator("text=Hi there.").count();
+
+test("a new customer is welcomed once, even after reloads", async () => {
+  const { page, errors } = await newCustomer();
+  assert.equal(await welcomes(page), 1);
+  for (let reload = 0; reload < 3; reload++) {
+    await page.reload();
+    await page.waitForSelector("button:has-text('Buy a Subscription')", { timeout: 30000 });
+    await wait(4000);
+  }
+  assert.equal(await welcomes(page), 1, "no second welcome after a reload");
+  assert.deepEqual(errors, []);
+});
+
+test("a reload while the history check fails does not welcome again", async () => {
+  const { page, errors } = await newCustomer();
+  await page.route("**/rest/v1/messages?select=id*", (route) => route.abort());
+  await page.reload();
+  await page.waitForSelector("button:has-text('Buy a Subscription')", { timeout: 30000 });
+  await wait(8000);
+  assert.equal(await welcomes(page), 1);
+  assert.deepEqual(errors, []);
+});
+
+test("a customer with an order who opens a fresh browser is not welcomed again", async (t) => {
+  const { page, errors } = await newCustomer();
+  if (!(await createOrder(page))) return t.skip("the store is not taking orders right now");
+  const fresh = await page.context().newPage();
+  await page.close();
+  await fresh.goto(BASE_URL, { timeout: 60000 });
+  await fresh.waitForSelector("button:has-text('Upload payment screenshot')", { timeout: 30000 });
+  await wait(5000);
+  assert.equal(await welcomes(fresh), 1);
+  assert.deepEqual(errors, []);
+});
+
+test("an order the server refuses shows no order and no payment details", async (t) => {
+  const { page, errors } = await newCustomer();
+  await click(page, "Buy a Subscription");
+  if (!(await page.isVisible("button:has-text('1 Month')"))) return t.skip("the store is not taking orders right now");
+  await click(page, "1 Month");
+  await click(page, "JazzCash");
+  await page.route("**/rest/v1/rpc/save_changes", (route) =>
+    route.request().postData()?.includes('"table":"orders"')
+      ? route.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ code: "P0001", message: "Orders are closed right now" }) })
+      : route.continue()
+  );
+  await page.click("button:has-text('I agree, create order'), button:has-text('Create order')");
+  await wait(6000);
+  assert.equal(await page.locator("text=/^Order PS-/i").count(), 0, "no order card");
+  assert.equal(await page.locator("text=/^Order PS-/i").count(), 0, "no order card");
+  assert.ok(await page.isVisible("button:has-text('Buy a Subscription')"), "back at the main menu");
+  assert.deepEqual(errors, []);
+});
+
+test("an order that cannot reach the server asks to tap again", async (t) => {
+  const { page, errors } = await newCustomer();
+  await click(page, "Buy a Subscription");
+  if (!(await page.isVisible("button:has-text('1 Month')"))) return t.skip("the store is not taking orders right now");
+  await click(page, "1 Month");
+  await click(page, "JazzCash");
+  await page.route("**/rest/v1/rpc/save_changes", (route) => (route.request().postData()?.includes('"table":"orders"') ? route.abort() : route.continue()));
+  await page.click("button:has-text('I agree, create order'), button:has-text('Create order')");
+  await page.waitForSelector("text=We couldn't create your order", { timeout: 20000 });
+  assert.equal(await page.locator("text=/^Order PS-/i").count(), 0);
+  assert.deepEqual(errors, []);
+});
+
+test("tapping create order three times makes one order", async (t) => {
+  const { page, errors } = await newCustomer();
+  await click(page, "Buy a Subscription");
+  if (!(await page.isVisible("button:has-text('1 Month')"))) return t.skip("the store is not taking orders right now");
+  await click(page, "1 Month");
+  await click(page, "JazzCash");
+  const button = page.locator("button:has-text('I agree, create order'), button:has-text('Create order')").last();
+  await Promise.all([button.click(), button.click({ force: true }).catch(() => {}), button.click({ force: true }).catch(() => {})]);
+  await wait(5000);
+  assert.equal(await page.locator("text=/^Order PS-/i").count(), 1);
+  assert.equal(await page.locator("text=Create order").count(), 1);
+  assert.deepEqual(errors, []);
+});
+
+test("main menu in the middle closes the old choices", async (t) => {
+  const { page, errors } = await newCustomer();
+  await click(page, "Buy a Subscription");
+  if (!(await page.isVisible("button:has-text('1 Month')"))) return t.skip("the store is not taking orders right now");
+  await click(page, "1 Month");
+  await click(page, "Main menu");
+  assert.equal(await page.locator("button:has-text('JazzCash')").count(), 0, "payment methods are gone");
+  assert.ok(await page.isVisible("button:has-text('Buy a Subscription')"));
+  assert.deepEqual(errors, []);
+});
+
+test("coming back within six hours sends no welcome back", async () => {
+  const { page, errors } = await newCustomer();
+  for (const state of ["hidden", "visible", "hidden", "visible"]) {
+    await page.evaluate((value) => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, get: () => value });
+      document.dispatchEvent(new Event("visibilitychange"));
+    }, state);
+    await wait(500);
+  }
+  await page.reload();
+  await page.waitForSelector("button:has-text('Buy a Subscription')", { timeout: 30000 });
+  await wait(4000);
+  assert.equal(await page.locator("text=Welcome back").count(), 0);
+  assert.deepEqual(errors, []);
 });

@@ -3,7 +3,7 @@ import { formatDuration, getEffectiveStatus } from "../availability";
 import { serverNow } from "../clock";
 import { getSupabase } from "../supabase/client";
 import { uploadScreenshot } from "../supabase/screenshots";
-import { hasAnyChat, saveNow, stepsStuck, whenAllSaved } from "../supabase/sync";
+import { hasAnyChat, refreshData, saveNow, stepsStuck } from "../supabase/sync";
 import { recordUploadProblem } from "../supabase/uploadProblems";
 import type { AppState, Conversation, Customer, Message, Order, Stage, TicketKind } from "../types";
 import { DEVICE_BLOCKED_MESSAGE, deviceBlocked } from "../deviceBlock";
@@ -193,7 +193,9 @@ const openingChats = new Set<string>();
 const HISTORY_CHECKS = 3;
 
 async function hasChatHistory(customerId: string) {
-  if (getState().messages.some((message) => message.customerId === customerId)) return true;
+  const state = getState();
+  const seen = [state.messages, state.orders, state.tickets].some((rows) => rows.some((row) => row.customerId === customerId));
+  if (seen) return true;
   for (let attempt = 1; attempt <= HISTORY_CHECKS; attempt++) {
     const found = await hasAnyChat(customerId);
     if (found !== null) return found;
@@ -203,6 +205,7 @@ async function hasChatHistory(customerId: string) {
 }
 
 export async function openChat(customerId: string) {
+  if (openingChats.has(customerId)) return;
   openingChats.add(customerId);
   const hasHistory = await hasChatHistory(customerId);
   openingChats.delete(customerId);
@@ -442,52 +445,80 @@ export function showHowItWorks(customerId: string) {
   });
 }
 
-export function createOrder(customerId: string) {
-  if (botIsReplying(customerId) || getState().conversations[customerId]?.stage !== "terms") return;
-  let order: Order | undefined;
+const creatingOrders = new Set<string>();
+const ORDERS_CLOSED = "Orders are closed right now";
+const ORDER_NOT_CREATED = "We couldn't create your order. Please check your internet and tap Create order again.";
+
+function newOrder(state: AppState, customerId: string): Order | null {
+  const conversation = state.conversations[customerId];
+  const plan = state.plans.find((item) => item.id === conversation.planId);
+  const method = state.methods.find((item) => item.id === conversation.methodId);
+  if (!plan || !method) return null;
+
+  const now = serverNow();
+  return {
+    id: createOrderNumber(),
+    customerId,
+    planId: plan.id,
+    planName: plan.name,
+    amount: plan.price,
+    methodName: method.name,
+    bank: { ...state.settings.bank, iban: method.showIban && state.settings.bank.iban ? state.settings.bank.iban : undefined },
+    paymentSteps: method.steps,
+    status: "awaiting_payment",
+    codeUnused: false,
+    createdAt: now,
+    expiresAt: now + state.settings.timers.orderMinutes * MINUTE,
+  };
+}
+
+function storeClosed(state: AppState) {
+  const status = getEffectiveStatus(state.settings);
+  return status === "offline" || status === "away_closed" ? status : null;
+}
+
+function tellOrdersClosed(customerId: string, status: "offline" | "away_closed") {
+  replyAsBot(customerId, (state) => {
+    addMessage(state, customerId, "bot", fillPlaceholders(state.settings.statusMessages[status], state));
+    startFromMenu(state.conversations[customerId]);
+  });
+}
+
+export async function createOrder(customerId: string) {
+  if (botIsReplying(customerId) || creatingOrders.has(customerId) || getState().conversations[customerId]?.stage !== "terms") return;
 
   updateState((state) => {
     addMessage(state, customerId, "customer", "Create order");
-    const conversation = state.conversations[customerId];
-    const plan = state.plans.find((item) => item.id === conversation.planId);
-    const method = state.methods.find((item) => item.id === conversation.methodId);
-    const status = getEffectiveStatus(state.settings);
-    if (!plan || !method || status === "offline" || status === "away_closed") return;
-
-    const now = serverNow();
-    order = {
-      id: createOrderNumber(),
-      customerId,
-      planId: plan.id,
-      planName: plan.name,
-      amount: plan.price,
-      methodName: method.name,
-      bank: { ...state.settings.bank, iban: method.showIban && state.settings.bank.iban ? state.settings.bank.iban : undefined },
-      paymentSteps: method.steps,
-      status: "awaiting_payment",
-      codeUnused: false,
-      createdAt: now,
-      expiresAt: now + state.settings.timers.orderMinutes * MINUTE,
-    };
-    state.orders.unshift(order);
-    conversation.activeOrderId = order.id;
-    conversation.stage = "awaiting_payment";
   });
 
-  void whenAllSaved().then(() => replyAsBot(customerId, (state) => {
-    const saved = order && state.orders.find((item) => item.id === order?.id);
-    if (saved) {
-      addMessage(state, customerId, "bot", botText(state, "orderCreated", { order_id: saved.id, plan: saved.planName }), { kind: "payment", orderId: saved.id });
-      return;
-    }
+  const closed = storeClosed(getState());
+  const order = newOrder(getState(), customerId);
+  if (closed || !order) {
+    if (closed) tellOrdersClosed(customerId, closed);
+    return;
+  }
 
-    // The store may have closed while the customer was choosing a plan.
-    const status = getEffectiveStatus(state.settings);
-    if (status === "offline" || status === "away_closed") {
-      addMessage(state, customerId, "bot", fillPlaceholders(state.settings.statusMessages[status], state));
-      state.conversations[customerId].stage = "menu";
-    }
-  }));
+  creatingOrders.add(customerId);
+  const refusal = await saveNow((state) => {
+    state.orders.unshift(order);
+    state.conversations[customerId].activeOrderId = order.id;
+    state.conversations[customerId].stage = "awaiting_payment";
+  });
+  creatingOrders.delete(customerId);
+
+  if (refusal?.includes(ORDERS_CLOSED)) {
+    refreshData();
+    tellOrdersClosed(customerId, "offline");
+    return;
+  }
+  if (refusal) {
+    replyAsBot(customerId, (state) => addMessage(state, customerId, "bot", ORDER_NOT_CREATED));
+    return;
+  }
+
+  replyAsBot(customerId, (state) => {
+    addMessage(state, customerId, "bot", botText(state, "orderCreated", { order_id: order.id, plan: order.planName }), { kind: "payment", orderId: order.id });
+  });
 }
 
 export function cancelOrder(customerId: string) {

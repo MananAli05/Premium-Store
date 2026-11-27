@@ -125,7 +125,6 @@ let pendingVersion = 0;
 const STUCK_AFTER_MS = 10_000;
 let unsentSince: number | null = null;
 let stuckTimer: ReturnType<typeof setTimeout> | undefined;
-const savedWaiters: (() => void)[] = [];
 
 function notifyPending() {
   pendingVersion += 1;
@@ -136,7 +135,6 @@ function trackUnsent() {
   if (outbox.length === 0) {
     unsentSince = null;
     clearTimeout(stuckTimer);
-    savedWaiters.splice(0).forEach((done) => done());
     return;
   }
   if (unsentSince !== null) return;
@@ -152,12 +150,6 @@ export function stepsStuck() {
   return unsentSince !== null && Date.now() - unsentSince >= STUCK_AFTER_MS;
 }
 
-export function whenAllSaved() {
-  return new Promise<void>((resolve) => {
-    if (outbox.length === 0) resolve();
-    else savedWaiters.push(resolve);
-  });
-}
 
 // Messages written on this device that the server does not have yet (shown with a clock).
 export function pendingMessageIds() {
@@ -587,7 +579,10 @@ export async function hasOlderChat(customerId: string): Promise<boolean | null> 
 }
 
 export async function hasAnyChat(customerId: string): Promise<boolean | null> {
-  const { data, error } = await getActiveClient().from("messages").select("id").eq("customer_id", customerId).limit(1);
+  const client = getActiveClient();
+  const { data: auth } = await client.auth.getSession();
+  if (auth.session?.user.id !== customerId) return null;
+  const { data, error } = await client.from("messages").select("id").eq("customer_id", customerId).limit(1);
   if (error || !data) return null;
   return data.length > 0;
 }
