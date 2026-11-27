@@ -97,8 +97,14 @@ export function validateEmail(email: string) {
   return null;
 }
 
+export function looksFake(number: string) {
+  const rest = number.slice(2);
+  return /(\d){6}/.test(rest) || new Set(rest).size <= 2;
+}
+
 export function validateWhatsApp(number: string) {
   if (!/^03\d{9}$/.test(number)) return "Please enter your 11-digit WhatsApp number, like 03001234567.";
+  if (looksFake(number)) return "Please enter your real WhatsApp number.";
   return null;
 }
 

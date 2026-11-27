@@ -5,6 +5,7 @@ import { Lock, ShieldCheck, Timer, Zap } from "lucide-react";
 import { classNames } from "@/lib/format";
 import SecretInput from "@/components/SecretInput";
 import { NO_INTERNET_MESSAGE, isOnline } from "@/lib/store/connection";
+import { markDeviceBlocked } from "@/lib/deviceBlock";
 import { checkEmailStatus, findBlockReason, requestPinReset, signIn, signUp } from "@/lib/store/customer";
 import { cleanDigits, cleanEmail, limits, validateEmail, validatePin, validateWhatsApp } from "@/lib/validation";
 
@@ -79,6 +80,7 @@ export default function AuthScreen() {
     if (step === "email") {
       const blockReason = await findBlockReason(email);
       if (blockReason !== null) {
+        markDeviceBlocked();
         setBusy(false);
         setError(blockedMessage(blockReason));
         return;

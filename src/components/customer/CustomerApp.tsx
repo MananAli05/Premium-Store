@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useAuthUser } from "@/hooks/useAuthUser";
 import { useIsDesktop } from "@/hooks/useIsDesktop";
+import { markDeviceBlocked } from "@/lib/deviceBlock";
 import { usePresence } from "@/hooks/usePresence";
 import { textColorFor } from "@/lib/format";
 import { ensureCustomerProfile, signOut } from "@/lib/store/customer";
@@ -47,7 +48,9 @@ export default function CustomerApp() {
   }, [customer, user]);
 
   useEffect(() => {
-    if (customer?.blocked) signOut().then(stopSync);
+    if (!customer?.blocked) return;
+    markDeviceBlocked();
+    signOut().then(stopSync);
   }, [customer?.blocked]);
 
   usePresence(customer?.id);

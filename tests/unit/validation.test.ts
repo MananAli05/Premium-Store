@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { cleanCode, cleanIban, codeOnOwnLine, extractCode, validateCode, validateEmail, validatePin } from "../../src/lib/validation.ts";
+import { cleanCode, cleanIban, codeOnOwnLine, extractCode, validateCode, validateEmail, validatePin, validateWhatsApp } from "../../src/lib/validation.ts";
 
 const portalMessage = (code: string) =>
   `Your premium code for 1 month is: \n\n ${code} \n\nPlease copy and paste it in the App 'Activate with Premium Code'. Don't enter manually to prevent make a mistake`;
@@ -46,4 +46,12 @@ test("finds the code on the third line of the code template", () => {
   assert.equal(codeOnOwnLine(portalMessage("itfify")), "itfify");
   assert.equal(codeOnOwnLine("Blocked"), "");
   assert.equal(codeOnOwnLine("Please wait\nWe are checking"), "");
+});
+
+test("made-up WhatsApp numbers are refused", () => {
+  assert.equal(validateWhatsApp("03444444444"), "Please enter your real WhatsApp number.");
+  assert.equal(validateWhatsApp("03222222222"), "Please enter your real WhatsApp number.");
+  assert.equal(validateWhatsApp("03121212121"), "Please enter your real WhatsApp number.");
+  assert.equal(validateWhatsApp("03001234567"), null);
+  assert.equal(validateWhatsApp("03119446663"), null);
 });

@@ -6,6 +6,7 @@ import { uploadScreenshot } from "../supabase/screenshots";
 import { hasAnyChat, saveNow, stepsStuck, whenAllSaved } from "../supabase/sync";
 import { recordUploadProblem } from "../supabase/uploadProblems";
 import type { AppState, Conversation, Customer, Message, Order, Stage, TicketKind } from "../types";
+import { DEVICE_BLOCKED_MESSAGE, deviceBlocked } from "../deviceBlock";
 import { validateName } from "../validation";
 import { hasWaitingReplies, isRefreshing } from "./connection";
 import { ADMIN_CANCEL_REASON, addMessage, botText, canStillPay, createOrderNumber, createTicketNumber, fillPlaceholders, findCustomerTitle, getActiveOrder, notifyAdmin, replyAsBot } from "./helpers";
@@ -56,6 +57,7 @@ function takenMessage(owner: string | null) {
 const WHATSAPP_UNCHECKED = "We couldn't check this number right now. Please try again.";
 
 export async function signUp(email: string, pin: string, whatsapp: string): Promise<AuthResult> {
+  if (deviceBlocked()) return { error: DEVICE_BLOCKED_MESSAGE };
   const check = await isWhatsAppTaken(whatsapp);
   if (check.taken) return { error: takenMessage(check.owner) };
   if (!check.checked && !check.missing) return { error: WHATSAPP_UNCHECKED };
