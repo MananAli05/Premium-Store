@@ -9,7 +9,7 @@ begin
   if new.whatsapp is null or new.whatsapp is not distinct from (case when tg_op = 'UPDATE' then old.whatsapp end) then
     return new;
   end if;
-  if rest ~ '(\d)\1{6}' or (select count(distinct digit) from regexp_split_to_table(rest, '') as digit) <= 2 then
+  if rest ~ '(\d)\1{3}' or (select count(distinct digit) from regexp_split_to_table(rest, '') as digit) <= 3 then
     raise exception 'Please enter your real WhatsApp number.';
   end if;
   return new;

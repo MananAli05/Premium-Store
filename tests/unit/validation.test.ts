@@ -52,6 +52,9 @@ test("made-up WhatsApp numbers are refused", () => {
   assert.equal(validateWhatsApp("03444444444"), "Please enter your real WhatsApp number.");
   assert.equal(validateWhatsApp("03222222222"), "Please enter your real WhatsApp number.");
   assert.equal(validateWhatsApp("03121212121"), "Please enter your real WhatsApp number.");
+  for (const number of ["03001122112", "03001123333", "03001331111", "03001122222"]) {
+    assert.equal(validateWhatsApp(number), "Please enter your real WhatsApp number.");
+  }
   assert.equal(validateWhatsApp("03001234567"), null);
   assert.equal(validateWhatsApp("03119446663"), null);
 });

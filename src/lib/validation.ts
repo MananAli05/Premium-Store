@@ -99,7 +99,7 @@ export function validateEmail(email: string) {
 
 export function looksFake(number: string) {
   const rest = number.slice(2);
-  return /(\d){6}/.test(rest) || new Set(rest).size <= 2;
+  return /(\d)\1{3}/.test(rest) || new Set(rest).size <= 3;
 }
 
 export function validateWhatsApp(number: string) {
