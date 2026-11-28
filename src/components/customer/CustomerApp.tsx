@@ -49,7 +49,7 @@ export default function CustomerApp() {
 
   useEffect(() => {
     if (!customer?.blocked) return;
-    markDeviceBlocked();
+    if (customer.blockDevice) markDeviceBlocked();
     signOut().then(stopSync);
   }, [customer?.blocked]);
 

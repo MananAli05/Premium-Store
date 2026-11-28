@@ -6,7 +6,7 @@ import { classNames } from "@/lib/format";
 import SecretInput from "@/components/SecretInput";
 import { NO_INTERNET_MESSAGE, isOnline } from "@/lib/store/connection";
 import { markDeviceBlocked } from "@/lib/deviceBlock";
-import { checkEmailStatus, findBlockReason, requestPinReset, signIn, signUp } from "@/lib/store/customer";
+import { checkEmailStatus, emailBlocksDevice, findBlockReason, requestPinReset, signIn, signUp } from "@/lib/store/customer";
 import { cleanDigits, cleanEmail, limits, validateEmail, validatePin, validateWhatsApp } from "@/lib/validation";
 
 type Step = "email" | "login" | "create" | "forgot";
@@ -80,7 +80,7 @@ export default function AuthScreen() {
     if (step === "email") {
       const blockReason = await findBlockReason(email);
       if (blockReason !== null) {
-        markDeviceBlocked();
+        if (await emailBlocksDevice(email)) markDeviceBlocked();
         setBusy(false);
         setError(blockedMessage(blockReason));
         return;

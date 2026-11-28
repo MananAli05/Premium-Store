@@ -350,12 +350,13 @@ export function markAllNotificationsRead() {
   });
 }
 
-export function blockCustomer(customerId: string, reason: string) {
+export function blockCustomer(customerId: string, reason: string, blockDevice: boolean) {
   updateState((state) => {
     const customer = state.customers.find((item) => item.id === customerId);
     if (!customer) return;
     customer.blocked = true;
     customer.blockReason = reason;
+    customer.blockDevice = blockDevice;
     addMessage(state, customerId, "admin", `${state.settings.blocking.message}
 Reason: ${reason}`);
   });
@@ -367,6 +368,7 @@ export function unblockCustomer(customerId: string) {
     if (!customer) return;
     customer.blocked = false;
     customer.blockReason = undefined;
+    customer.blockDevice = false;
     addMessage(state, customerId, "admin", state.settings.blocking.unblockMessage);
   });
 }

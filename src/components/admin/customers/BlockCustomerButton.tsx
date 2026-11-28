@@ -55,11 +55,12 @@ function BlockDialog({ customer, onClose }: { customer: Customer; onClose: () =>
   const reasons = state.settings.blocking.reasons;
   const [choice, setChoice] = useState(reasons[0] ?? OTHER);
   const [customReason, setCustomReason] = useState("");
+  const [blockDevice, setBlockDevice] = useState(false);
   const reason = choice === OTHER ? customReason.trim() : choice;
 
   const block = () => {
     if (!reason) return;
-    blockCustomer(customer.id, reason);
+    blockCustomer(customer.id, reason, blockDevice);
     onClose();
   };
 
@@ -82,6 +83,17 @@ function BlockDialog({ customer, onClose }: { customer: Customer; onClose: () =>
       </div>
 
       {choice === OTHER && <input autoFocus value={customReason} maxLength={150} onChange={(event) => setCustomReason(event.target.value)} placeholder="Type the reason" className={`${inputClass} mt-2 h-10`} />}
+
+      <button
+        onClick={() => setBlockDevice(!blockDevice)}
+        className={classNames("mt-3 w-full text-left rounded-xl border px-3.5 py-3 flex gap-2.5 transition", blockDevice ? "border-red-300 bg-red-50" : "border-zinc-200 hover:bg-zinc-50")}
+      >
+        <span className={classNames("mt-0.5 size-4 shrink-0 rounded border-2 flex items-center justify-center text-[10px] text-white", blockDevice ? "border-red-600 bg-red-600" : "border-zinc-300")}>{blockDevice && "✓"}</span>
+        <span>
+          <span className="block text-[13.5px] font-semibold text-zinc-900">Also block this device</span>
+          <span className="block text-[12px] text-zinc-500">Only for spam. They can&apos;t make a new account from this device.</span>
+        </span>
+      </button>
 
       <div className="mt-5 grid grid-cols-2 gap-2.5">
         <button onClick={onClose} className="h-11 rounded-xl border border-zinc-200 text-[14px] font-semibold text-zinc-700 hover:bg-zinc-50 transition">

@@ -137,6 +137,7 @@ export type Customer = {
   lastSeenAt: number;
   blocked: boolean;
   blockReason?: string;
+  blockDevice?: boolean;
   blockedAt?: number;
   paymentBlockedUntil?: number;
   cancelCount: number;

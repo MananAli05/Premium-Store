@@ -1,4 +1,4 @@
-const KEY = "premium-store-device";
+const KEY = "premium-store-device-block";
 
 export const DEVICE_BLOCKED_MESSAGE = "This device is blocked. Please contact support.";
 

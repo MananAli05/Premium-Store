@@ -48,7 +48,7 @@ export default function CustomerPanel({ customerId }: { customerId: string }) {
 
       {customer.blocked && (
         <div className="rounded-xl bg-red-50 px-3.5 py-2.5 text-[12.5px] text-red-700">
-          <span className="font-semibold">Blocked:</span> {customer.blockReason ?? "No reason given"}
+          <span className="font-semibold">{customer.blockDevice ? "Blocked + device:" : "Blocked:"}</span> {customer.blockReason ?? "No reason given"}
         </div>
       )}
 

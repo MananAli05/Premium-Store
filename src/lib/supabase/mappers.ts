@@ -17,6 +17,7 @@ export function customerFromRow(row: Row): Customer {
     lastSeenAt: Number(row.last_seen_at),
     blocked: row.blocked as boolean,
     blockReason: optional<string>(row.block_reason),
+    blockDevice: row.block_device === undefined ? undefined : Boolean(row.block_device),
     blockedAt: optionalNumber(row.blocked_at),
     paymentBlockedUntil: optionalNumber(row.payment_blocked_until),
     cancelCount: Number(row.cancel_count ?? 0),
@@ -38,6 +39,7 @@ export function customerToRow(customer: Customer): Row {
     cancel_cooldown_until: nullable(customer.cancelCooldownUntil),
     ...(customer.number !== undefined ? { customer_number: customer.number } : {}),
     ...(customer.whatsapp ? { whatsapp: customer.whatsapp } : {}),
+    ...(customer.blockDevice !== undefined ? { block_device: customer.blockDevice } : {}),
   };
 }
 
